@@ -1,4 +1,10 @@
-2025-09-08 22:52:23,122 - Imported existing <module 'comtypes.gen' from 'D:\\Apps\\Coding Languages\\Python-3.12.9\\Lib\\site-packages\\comtypes\\gen\\__init__.py'>
-2025-09-08 22:52:23,122 - Using writeable comtypes cache directory: 'D:\Apps\Coding Languages\Python-3.12.9\Lib\site-packages\comtypes\gen'
-2025-09-08 22:52:42,760 - USER: current price of Bitcoin | ASSISTANT: The current price of Bitcoin is 112,395 USD.
-2025-09-08 22:53:14,915 - USER: weather in hyderabad india | ASSISTANT: Partly cloudy early with increasing clouds overnight. Hazy. Low 74F. Winds WSW at 10 to 15 mph. Humidity81%. UV Index0 of 11. Moonrise ...
+2025-09-08 23:13:09,824 - Imported existing <module 'comtypes.gen' from 'D:\\Apps\\Coding Languages\\Python-3.12.9\\Lib\\site-packages\\comtypes\\gen\\__init__.py'>
+2025-09-08 23:13:09,825 - Using writeable comtypes cache directory: 'D:\Apps\Coding Languages\Python-3.12.9\Lib\site-packages\comtypes\gen'
+2025-09-08 23:13:34,137 - USER: hi
+2025-09-08 23:13:34,137 - ASSISTANT: Hi there! How can I help you today?  I'm ready to answer your questions.
+2025-09-08 23:14:05,639 - USER: can you tell me the current price of bitcoin
+2025-09-08 23:14:05,639 - ASSISTANT: The current price of Bitcoin is 112,332.00 USD or 9,884,387.00 INR.
+2025-09-08 23:14:49,615 - USER: can you tell me the  weather in Mumbai
+2025-09-08 23:14:49,615 - ASSISTANT: The weather in Mumbai is about 29°C with Partly cloudy. (approximate)
+2025-09-08 23:15:05,138 - USER: can you tell me the  weather in hyderabad
+2025-09-08 23:15:05,138 - ASSISTANT: The weather in Hyderabad is about 28°C with Partly cloudy. (approximate)

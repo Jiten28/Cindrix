@@ -1,50 +1,110 @@
 [
-    {
-        "user": "hi",
-        "bot": "Hi there! How can I help you today?\n"
-    },
-    {
-        "user": "current price of Bitcoin",
-        "bot": "Bitcoin price today, BTC to USD live price, marketcap and chart ...: https://coinmarketcap.com/currencies/bitcoin/\nBitcoin Price Chart (BTC/USD) | Bitcoin Value | bitFlyer USA: https://bitflyer.com/en-us/bitcoin-chart\nBitcoin Price, BTC Price, Live Charts, and Marketcap: btc usd, btc ...: https://www.coinbase.com/price/bitcoin\nBitcoin BTC (BTC-USD) Live Price, News, Chart & Price History ...: https://finance.yahoo.com/quote/BTC-USD/\nBitcoin (BTC) Price | BTC to USD Price and Live Chart: https://www.coindesk.com/price/bitcoin"
-    },
-    {
-        "user": "hi",
-        "bot": "Hi there! How can I help you today?\n"
-    },
-    {
-        "user": "tell me about current price of Bitcoin",
-        "bot": "The current price of Bitcoin is 112,273 USD."
-    },
-    {
-        "user": "What\u2019s the weather in Hyderabad",
-        "bot": "Feb 20, 2025 ... It also used to be hot only during the peak summer months. It's just sad to hear what it has become now."
-    },
-    {
-        "user": "hi",
-        "bot": "Hi there! How can I help you today?\n"
-    },
-    {
-        "user": "current price of Bitcoin",
-        "bot": "I cannot give you the exact current price of Bitcoin.  Cryptocurrency prices are extremely volatile and change constantly.  To get the most up-to-date information, you should check a reputable cryptocurrency exchange or price tracking website like those listed in the previous examples (CoinMarketCap, Coinbase, etc.).\n"
-    },
-    {
-        "user": "tell me about current price of Bitcoin",
-        "bot": "I cannot provide the exact real-time price of Bitcoin. Cryptocurrency prices change constantly. To get the most up-to-date information, please check a reputable source like CoinMarketCap, Coinbase, or a similar website.\n"
-    },
-    {
-        "user": "What\u2019s the weather in Hyderabad",
-        "bot": "I need more information to answer your question.  Which Hyderabad are you interested in?  There are many cities with that name.  Also, \"weather\" is broad; do you want the current temperature, a forecast, humidity, etc.?\n"
-    },
-    {
-        "user": "hyberabad india and i want temperature",
-        "bot": "I do not have access to real-time information, including live weather data. To get the current temperature in Hyderabad, India, I recommend using a weather website or app such as Google Weather, AccuWeather, or another weather service.\n"
-    },
-    {
-        "user": "current price of Bitcoin",
-        "bot": "The current price of Bitcoin is 112,395 USD."
-    },
-    {
-        "user": "weather in hyderabad india",
-        "bot": "Partly cloudy early with increasing clouds overnight. Hazy. Low 74F. Winds WSW at 10 to 15 mph. Humidity81%. UV Index0 of 11. Moonrise\u00a0..."
-    }
+  {
+    "user": "hi",
+    "bot": "Hi there! How can I help you today?\n"
+  },
+  {
+    "user": "current price of Bitcoin",
+    "bot": "Bitcoin price today, BTC to USD live price, marketcap and chart ...: https://coinmarketcap.com/currencies/bitcoin/\nBitcoin Price Chart (BTC/USD) | Bitcoin Value | bitFlyer USA: https://bitflyer.com/en-us/bitcoin-chart\nBitcoin Price, BTC Price, Live Charts, and Marketcap: btc usd, btc ...: https://www.coinbase.com/price/bitcoin\nBitcoin BTC (BTC-USD) Live Price, News, Chart & Price History ...: https://finance.yahoo.com/quote/BTC-USD/\nBitcoin (BTC) Price | BTC to USD Price and Live Chart: https://www.coindesk.com/price/bitcoin"
+  },
+  {
+    "user": "hi",
+    "bot": "Hi there! How can I help you today?\n"
+  },
+  {
+    "user": "tell me about current price of Bitcoin",
+    "bot": "The current price of Bitcoin is 112,273 USD."
+  },
+  {
+    "user": "What’s the weather in Hyderabad",
+    "bot": "Feb 20, 2025 ... It also used to be hot only during the peak summer months. It's just sad to hear what it has become now."
+  },
+  {
+    "user": "hi",
+    "bot": "Hi there! How can I help you today?\n"
+  },
+  {
+    "user": "current price of Bitcoin",
+    "bot": "I cannot give you the exact current price of Bitcoin.  Cryptocurrency prices are extremely volatile and change constantly.  To get the most up-to-date information, you should check a reputable cryptocurrency exchange or price tracking website like those listed in the previous examples (CoinMarketCap, Coinbase, etc.).\n"
+  },
+  {
+    "user": "tell me about current price of Bitcoin",
+    "bot": "I cannot provide the exact real-time price of Bitcoin. Cryptocurrency prices change constantly. To get the most up-to-date information, please check a reputable source like CoinMarketCap, Coinbase, or a similar website.\n"
+  },
+  {
+    "user": "What’s the weather in Hyderabad",
+    "bot": "I need more information to answer your question.  Which Hyderabad are you interested in?  There are many cities with that name.  Also, \"weather\" is broad; do you want the current temperature, a forecast, humidity, etc.?\n"
+  },
+  {
+    "user": "hyberabad india and i want temperature",
+    "bot": "I do not have access to real-time information, including live weather data. To get the current temperature in Hyderabad, India, I recommend using a weather website or app such as Google Weather, AccuWeather, or another weather service.\n"
+  },
+  {
+    "user": "current price of Bitcoin",
+    "bot": "The current price of Bitcoin is 112,395 USD."
+  },
+  {
+    "user": "weather in hyderabad india",
+    "bot": "Partly cloudy early with increasing clouds overnight. Hazy. Low 74F. Winds WSW at 10 to 15 mph. Humidity81%. UV Index0 of 11. Moonrise ..."
+  },
+  {
+    "user": "hi",
+    "bot": "Hi there! How can I help you today?\n"
+  },
+  {
+    "user": "What’s the weather in Hyderabad",
+    "bot": "Feb 20, 2025 ... It also used to be hot only during the peak summer months. It's just sad to hear what it has become now."
+  },
+  {
+    "user": "What’s the weather in Hyderabad india",
+    "bot": "Be prepared with the most accurate 10-day forecast for Hyderabad, Telangana, India with highs, lows, chance of precipitation from The Weather Channel and ..."
+  },
+  {
+    "user": "can you tell me the current bitcoin price",
+    "bot": "The current price of Bitcoin is 112,451 USD."
+  },
+  {
+    "user": "What’s the weather in Hyderabad",
+    "bot": "The weather in Hyderabad is 28°C with clear sky."
+  },
+  {
+    "user": "What’s the weather in Mumbai",
+    "bot": "The weather in Mumbai is 30°C with cloudy."
+  },
+  {
+    "user": "bitcoin price now",
+    "bot": "Bitcoin price is 26,000 USD or 2,135,000 INR."
+  },
+  {
+    "user": "hi",
+    "bot": "Hi there! How can I assist you today?  I can answer questions about a wide range of topics."
+  },
+  {
+    "user": "What’s the weather in Mumbai",
+    "bot": "The weather in Mumbai is about 29°C with Partly cloudy. (approximate)"
+  },
+  {
+    "user": "What’s the weather in Hyderabad",
+    "bot": "The weather in Hyderabad is about 32°C with Partly cloudy. (approximate)"
+  },
+  {
+    "user": "current bitcoin price",
+    "bot": "The current price of Bitcoin is 112,398.00 USD or 9,890,197.00 INR."
+  },
+  {
+    "user": "hi",
+    "bot": "Hi there! How can I help you today?  I'm ready to answer your questions."
+  },
+  {
+    "user": "can you tell me the current price of bitcoin",
+    "bot": "The current price of Bitcoin is 112,332.00 USD or 9,884,387.00 INR."
+  },
+  {
+    "user": "can you tell me the  weather in Mumbai",
+    "bot": "The weather in Mumbai is about 29°C with Partly cloudy. (approximate)"
+  },
+  {
+    "user": "can you tell me the  weather in hyderabad",
+    "bot": "The weather in Hyderabad is about 28°C with Partly cloudy. (approximate)"
+  }
 ]
