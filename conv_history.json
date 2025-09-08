@@ -106,5 +106,25 @@
   {
     "user": "can you tell me the  weather in hyderabad",
     "bot": "The weather in Hyderabad is about 28°C with Partly cloudy. (approximate)"
+  },
+  {
+    "user": "hello",
+    "bot": "Hello there! How can I help you today? I'm ready to answer your questions."
+  },
+  {
+    "user": "can you tell me the current price of bitcoin",
+    "bot": "The current price of Bitcoin is 112,267.00 USD or 9,879,964.00 INR."
+  },
+  {
+    "user": "what's the weather in hyderabad",
+    "bot": "The weather in Hyderabad is about 30°C with Partly cloudy. (approximate)"
+  },
+  {
+    "user": "what's the weather in mumbai",
+    "bot": "The weather in Mumbai is about 29°C with Partly cloudy. (approximate)"
+  },
+  {
+    "user": "show me image of tag mahal",
+    "bot": "Top images:\nhttps://cdn.britannica.com/86/170586-050-AB7FEFAE/Taj-Mahal-Agra-India.jpg\nhttps://i.ytimg.com/vi/49HTIoCccDY/maxresdefault.jpg\nhttps://cdn.britannica.com/07/129607-050-D4A6E6A0/Taj-Mahal-sunrise-Agra-India.jpg"
   }
 ]
