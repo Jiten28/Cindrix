@@ -1,91 +1,122 @@
-# 🤖 Personal Gemini AI Assistant
+# 🤖 Personal Gemini Assistant
 
-An intelligent assistant built with **Google Gemini API** + **Google Custom Search API**.  
-It remembers chat history, answers questions, and retrieves **real-time web & image results**.
+An AI-powered personal assistant built with **Google Gemini API** and **Google Custom Search API**.
+It can **remember conversations**, answer queries with **real-time data** (Bitcoin price, Weather), fetch **web & image search results**, and even **speak responses** using Text-to-Speech.
 
 ---
 
 ## 🚀 Features
-- Conversational AI powered by **Google Gemini**.
-- Memory: Remembers previous chat context.
-- Real-time info: Integrated with **Google Search API**.
-- Image search support.
-- Logs all conversations into `chat.log`.
-- Persistent history stored in `conv_history.json`.
+
+* 🧠 **Conversation Memory** – remembers your past chats.
+* 💱 **Live Bitcoin Price** – fetches real-time BTC price in USD & INR.
+* 🌦️ **Weather Reports** – get current weather updates for cities worldwide.
+* 🔎 **Web Search** – powered by Google Custom Search API.
+* 🖼️ **Image Search** – retrieves top 3 images for your query.
+* 🎙️ **Text-to-Speech (TTS)** – assistant speaks responses.
+* 📜 **Logging & History** – saves all chats to `conv_history.json` and `chat_log.txt`.
+* 🔄 **Gemini Fallback** – if real-time API/search fails, Gemini answers naturally.
 
 ---
 
 ## 📂 Project Structure
+
+```
+📦 Personal-Gemini-Assistant
+ ┣ 📜 gemini_retrieval.py   # Main program
+ ┣ 📜 conv_history.json     # Conversation memory (auto-created)
+ ┣ 📜 chat_log.txt          # Logs of conversations
+ ┣ 📜 .env                  # API keys & settings
+ ┗ 📜 README.md             # Documentation
 ```
 
-Personal-Gemini/
-│── gemini\_retrieval.py   # main Python script
-│── conv\_history.json     # auto-generated, stores chat history
-│── .env                  # API keys + settings
-│── requirements.txt      # dependencies
-│── README.md             # documentation
+---
 
-````
+## ⚙️ Setup
+
+### 1️⃣ Clone Repository
+
+```bash
+git clone https://github.com/your-username/personal-gemini-assistant.git
+cd personal-gemini-assistant
+```
+
+### 2️⃣ Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+**requirements.txt**
+
+```
+google-generativeai
+python-dotenv
+requests
+pyttsx3
+```
 
 ---
 
-## ⚙️ Setup Instructions
+## 🔑 Environment Variables
 
-1. Clone the repo:
-   ```bash
-   git clone https://github.com/yourusername/personal-gemini.git
-   cd personal-gemini
-````
+Create a `.env` file in the project root:
 
-2. Install dependencies:
+```
+GOOGLE_API_KEY=your_google_api_key_here
+GOOGLE_CSE_ID=your_custom_search_engine_id_here
+HISTORY_FILE=conv_history.json
+```
 
-   ```bash
-   pip install -r requirements.txt
-   ```
+👉 Keys you need:
 
-3. Create a **.env file**:
-
-   ```
-   GOOGLE_API_KEY=your_google_api_key_here
-   GOOGLE_CSE_ID=your_custom_search_engine_id_here
-   HISTORY_FILE=conv_history.json
-   ```
-
-4. Run the assistant:
-
-   ```bash
-   python gemini_retrieval.py
-   ```
+* **Google API Key** → from [Google Cloud Console](https://console.cloud.google.com/)
+* **Google Custom Search Engine ID (CSE ID)** → from [Google Custom Search](https://programmablesearchengine.google.com/)
 
 ---
 
-## 💡 Example Usage
+## ▶️ Run the Assistant
+
+```bash
+python gemini_retrieval.py
+```
+
+Example interaction:
 
 ```
 🤖 Gemini Assistant ready! (type 'exit' to quit)
 
-You: hi
-Assistant: Hello! How can I assist you today?
+You: hi  
+Assistant: Hello! How can I help you today?  
 
-You: search latest bitcoin price
-Assistant: Bitcoin Price Today: https://www.coindesk.com/... 
-...
+You: current price of Bitcoin  
+Assistant: Bitcoin price is 62,315 USD or 51,87,902 INR.  
 
-You: search image sunset in mumbai
-Assistant: 
-https://image-link-1.jpg
-https://image-link-2.jpg
+You: what's the weather in Hyderabad  
+Assistant: The weather in Hyderabad is 29°C with clear sky.  
+
+You: show me images of Taj Mahal  
+Assistant: Here are the top images for Taj Mahal:  
+https://example1.jpg  
+https://example2.jpg  
+https://example3.jpg  
 ```
 
 ---
 
-## 🛠️ Tech Stack
+## 🛠️ How It Works
 
-* **Python 3.12+**
-* **Google Gemini API** (`google-generativeai`)
-* **Google Custom Search API**
-* **dotenv** for environment management
-* **requests** for API calls
-* **logging + JSON** for history persistence
+1. **Gemini API** → Handles natural conversation, structured JSON outputs (price, weather).
+2. **Google Custom Search API** → Fetches real-time info & images.
+3. **Conversation History** → Maintains context in `conv_history.json`.
+4. **Logging** → Saves all chats in `chat_log.txt`.
+5. **Text-to-Speech** → Reads responses aloud via `pyttsx3`.
+
+---
+
+## 📌 Notes
+
+* If **Google Search API** fails, Gemini fallback ensures you always get a response.
+* Weather & Bitcoin prices are extracted in **structured JSON** for natural replies.
+* For images, only **top 3 links** are shown.
 
 ---
