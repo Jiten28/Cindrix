@@ -36,7 +36,7 @@ It can **remember conversations**, answer queries with **real-time data** (Bitco
 ### 1️⃣ Clone Repository
 
 ```bash
-git clone https://github.com/your-username/personal-gemini-assistant.git
+git clone https://github.com/Jiten28/Personal-Gemini.git
 cd personal-gemini-assistant
 ```
 
@@ -82,24 +82,10 @@ python gemini_retrieval.py
 
 Example interaction:
 
-```
-🤖 Gemini Assistant ready! (type 'exit' to quit)
 
-You: hi  
-Assistant: Hello! How can I help you today?  
+<img width="1084" height="850" alt="image" src="https://github.com/user-attachments/assets/a578d790-d055-4fb5-a383-aa47610fed7a" />
 
-You: current price of Bitcoin  
-Assistant: Bitcoin price is 62,315 USD or 51,87,902 INR.  
 
-You: what's the weather in Hyderabad  
-Assistant: The weather in Hyderabad is 29°C with clear sky.  
-
-You: show me images of Taj Mahal  
-Assistant: Here are the top images for Taj Mahal:  
-https://example1.jpg  
-https://example2.jpg  
-https://example3.jpg  
-```
 
 ---
 
