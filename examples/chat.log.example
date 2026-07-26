@@ -5,9 +5,9 @@
 2025-09-08 23:14:05,639 - USER: can you tell me the current price of bitcoin
 2025-09-08 23:14:05,639 - ASSISTANT: The current price of Bitcoin is 112,332.00 USD or 9,884,387.00 INR.
 2025-09-08 23:14:49,615 - USER: can you tell me the  weather in Mumbai
-2025-09-08 23:14:49,615 - ASSISTANT: The weather in Mumbai is about 29°C with Partly cloudy. (approximate)
+2025-09-08 23:14:49,615 - ASSISTANT: The weather in Mumbai is about 29ï¿½C with Partly cloudy. (approximate)
 2025-09-08 23:15:05,138 - USER: can you tell me the  weather in hyderabad
-2025-09-08 23:15:05,138 - ASSISTANT: The weather in Hyderabad is about 28°C with Partly cloudy. (approximate)
+2025-09-08 23:15:05,138 - ASSISTANT: The weather in Hyderabad is about 28ï¿½C with Partly cloudy. (approximate)
 2025-09-08 23:18:11,584 - Imported existing <module 'comtypes.gen' from 'D:\\Apps\\Coding Languages\\Python-3.12.9\\Lib\\site-packages\\comtypes\\gen\\__init__.py'>
 2025-09-08 23:18:11,584 - Using writeable comtypes cache directory: 'D:\Apps\Coding Languages\Python-3.12.9\Lib\site-packages\comtypes\gen'
 2025-09-08 23:18:26,806 - USER: hello
@@ -15,9 +15,9 @@
 2025-09-08 23:19:11,422 - USER: can you tell me the current price of bitcoin
 2025-09-08 23:19:11,422 - ASSISTANT: The current price of Bitcoin is 112,267.00 USD or 9,879,964.00 INR.
 2025-09-08 23:19:36,058 - USER: what's the weather in hyderabad
-2025-09-08 23:19:36,058 - ASSISTANT: The weather in Hyderabad is about 30°C with Partly cloudy. (approximate)
+2025-09-08 23:19:36,058 - ASSISTANT: The weather in Hyderabad is about 30ï¿½C with Partly cloudy. (approximate)
 2025-09-08 23:19:53,066 - USER: what's the weather in mumbai
-2025-09-08 23:19:53,066 - ASSISTANT: The weather in Mumbai is about 29°C with Partly cloudy. (approximate)
+2025-09-08 23:19:53,066 - ASSISTANT: The weather in Mumbai is about 29ï¿½C with Partly cloudy. (approximate)
 2025-09-08 23:20:46,330 - USER: show me image of tag mahal
 2025-09-08 23:20:46,330 - ASSISTANT: Top images:
 https://cdn.britannica.com/86/170586-050-AB7FEFAE/Taj-Mahal-Agra-India.jpg

@@ -17,8 +17,8 @@
 
 - HTML5 / CSS3 (custom, no Bootstrap/Tailwind)
 - Vanilla JavaScript
-- GSAP (face + UI animation)
-- Three.js (subtle background effects only — not core rendering)
+- Three.js (or lightweight Canvas 2D) — renders the core particle-sphere identity
+- GSAP (surrounding UI state transitions and micro-interactions)
 - LottieFiles (supplementary micro-animations)
 
 ## High-Level Flow
@@ -50,13 +50,44 @@ Request lifecycle for a chat turn:
 5. `app/memory/` persists the turn (short-term always, long-term if flagged
    relevant).
 6. `app/analytics/` logs the event (latency, tokens, tool used, sentiment).
-7. Frontend renders the streamed text and drives the face animation state
-   (thinking → talking) off the stream lifecycle events.
+7. Frontend renders the streamed text and drives the particle sphere's state
+   (idle → listening → thinking → speaking) off the stream lifecycle events.
 
-## Folder Structure
+## Current State (Prototype)
+
+What actually exists in the repo right now, before Phase 1 work begins:
 
 ```text
-Nimbus/
+Nimbus-AI/
+├── docs/
+│   ├── PRD.md
+│   ├── Architecture.md
+│   ├── Design.md
+│   ├── Rules.md
+│   ├── Phases.md
+│   └── Memory.md
+├── examples/
+│   ├── conv_history.example.json   # sample output, not live data
+│   └── chat.log.example            # sample output, not live data
+├── .env.example
+├── .gitignore
+├── README.md
+├── gemini_retrieval.py             # CLI entry point — all current logic lives here
+└── requirements.txt
+```
+
+`gemini_retrieval.py` currently holds everything: Gemini calls, keyword-based
+intent routing (crypto/weather/image/search/chit-chat), JSON conversation
+memory, and TTS. Phase 1 splits this single file apart into the `app/`
+structure below — `app/ai/` gets the Gemini client, `app/agents/` gets the
+routing logic (upgraded from keyword-matching to real intent handling),
+`app/memory/` gets the history persistence, `app/tools/` gets weather/search/
+crypto. Nothing here is thrown away; it's relocated and formalized.
+
+## Target Folder Structure (Phase 1+)
+
+```text
+Nimbus-AI/
 │
 ├── app/
 │   ├── api/          # Flask routes / blueprints, request validation
@@ -74,7 +105,7 @@ Nimbus/
 ├── frontend/
 │   ├── assets/
 │   │   ├── icons/
-│   │   ├── avatar/       # Face SVGs / Lottie states
+│   │   ├── avatar/       # Particle-sphere renderer assets/shaders, Lottie states
 │   │   ├── animations/
 │   │   └── sounds/
 │   ├── css/
@@ -96,7 +127,13 @@ Nimbus/
 │   ├── embeddings/
 │   └── cache/
 │
+├── examples/
+│   ├── conv_history.example.json
+│   └── chat.log.example
+│
 ├── tests/
+├── .env.example
+├── .gitignore
 ├── requirements.txt
 ├── run.py
 └── README.md

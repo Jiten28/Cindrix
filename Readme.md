@@ -49,6 +49,26 @@ lattice, no clumping) that changes shape and motion by state:
 
 Full spec in `docs/Design.md`.
 
+## Project structure
+
+```
+Nimbus-AI/
+├── docs/                          # planning docs (see below)
+├── examples/
+│   ├── conv_history.example.json  # sample output — not live data
+│   └── chat.log.example           # sample output — not live data
+├── .env.example
+├── .gitignore
+├── README.md
+├── gemini_retrieval.py            # current CLI prototype entry point
+└── requirements.txt
+```
+
+Running the app locally creates its own `conv_history.json` and `chat.log` at
+the repo root — these are gitignored and stay on your machine. The files in
+`examples/` are static reference copies committed to the repo so anyone
+browsing it can see what output looks like without running anything.
+
 ## Project docs
 
 This repo is developed with a six-file planning structure so any AI coding
@@ -71,23 +91,34 @@ assistant (or future you) can pick up context instantly:
 
 ```bash
 git clone https://github.com/Jiten28/Nimbus-AI.git
-cd nimbus-ai
+cd Nimbus-AI
 pip install -r requirements.txt
 ```
 
-Create a `.env` file:
+Copy `.env.example` to `.env` and fill in your keys:
 
-```
-GOOGLE_API_KEY=your_google_api_key_here
-GOOGLE_CSE_ID=your_custom_search_engine_id_here
-OPENWEATHER_API_KEY=your_openweather_api_key_here
+```dotenv
+# Google API Key for both Gemini + Custom Search
+GOOGLE_API_KEY=
+
+# Google Custom Search Engine ID (from https://programmablesearchengine.google.com/)
+GOOGLE_CSE_ID=
+
+# Optional: store history file path
 HISTORY_FILE=conv_history.json
-```
 
-Run:
+GOOGLE_API_LOCATION=us
+```
 
 ```bash
-python run.py
+cp .env.example .env
+# then edit .env with your real keys
+```
+
+Run (current CLI prototype — `run.py` arrives in Phase 1 once the Flask app exists):
+
+```bash
+python gemini_retrieval.py
 ```
 
 ## Status
