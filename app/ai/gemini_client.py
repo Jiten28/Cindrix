@@ -1,25 +1,28 @@
 """Gemini API client.
 
-call_gemini() and call_gemini_json() are ported directly from
-gemini_retrieval.py. stream_gemini() is new for Phase 1 — it's what lets the
-Flask route in app/api/routes.py send tokens to the browser as they arrive
-instead of waiting for the full response.
+Rebuilt on the google-genai SDK (the google-generativeai package this
+originally used, and the gemini-1.5-flash model it called, were both fully
+deprecated/shut down by Google — see the 404 error you hit). Function names
+and behavior are unchanged so nothing calling this module needs to change.
 """
 
 import json
 import re
 from typing import Generator, Optional
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 from app.config import settings
 
-if settings.GOOGLE_API_KEY:
-    genai.configure(api_key=settings.GOOGLE_API_KEY)
+_client: Optional[genai.Client] = None
 
 
-def _get_model() -> genai.GenerativeModel:
-    return genai.GenerativeModel(settings.GEMINI_MODEL)
+def _get_client() -> genai.Client:
+    global _client
+    if _client is None:
+        _client = genai.Client(api_key=settings.GOOGLE_API_KEY)
+    return _client
 
 
 def call_gemini(prompt: str) -> str:
@@ -28,7 +31,10 @@ def call_gemini(prompt: str) -> str:
     if not settings.GOOGLE_API_KEY:
         return "Gemini is not configured (missing GOOGLE_API_KEY)."
     try:
-        resp = _get_model().generate_content(prompt)
+        resp = _get_client().models.generate_content(
+            model=settings.GEMINI_MODEL,
+            contents=prompt,
+        )
         return (resp.text or "").strip() if resp else "No response."
     except Exception as e:
         return f"(Gemini error: {e})"
@@ -53,8 +59,11 @@ def stream_gemini(prompt: str) -> Generator[str, None, None]:
         yield "Gemini is not configured (missing GOOGLE_API_KEY)."
         return
     try:
-        response = _get_model().generate_content(prompt, stream=True)
-        for chunk in response:
+        stream = _get_client().models.generate_content_stream(
+            model=settings.GEMINI_MODEL,
+            contents=prompt,
+        )
+        for chunk in stream:
             if chunk.text:
                 yield chunk.text
     except Exception as e:

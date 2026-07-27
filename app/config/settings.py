@@ -16,7 +16,7 @@ GOOGLE_API_LOCATION: str = os.getenv("GOOGLE_API_LOCATION", "us").strip()
 OPENWEATHER_API_KEY: str = os.getenv("OPENWEATHER_API_KEY", "").strip()
 HISTORY_FILE: str = os.getenv("HISTORY_FILE", "data/conv_history.json").strip()
 
-GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-1.5-flash").strip()
+GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-flash-latest").strip()
 
 # Flask
 DEBUG: bool = os.getenv("FLASK_DEBUG", "true").lower() == "true"
@@ -31,11 +31,9 @@ def warn_if_missing() -> list[str]:
     """
     warnings = []
     if not GOOGLE_API_KEY:
-        warnings.append(
-            "GOOGLE_API_KEY not set — Gemini & Custom Search won't work.")
+        warnings.append("GOOGLE_API_KEY not set — Gemini & Custom Search won't work.")
     if not GOOGLE_CSE_ID:
         warnings.append("GOOGLE_CSE_ID not set — web/image search disabled.")
     if not OPENWEATHER_API_KEY:
-        warnings.append(
-            "OPENWEATHER_API_KEY not set — weather will use Gemini (approximate).")
+        warnings.append("OPENWEATHER_API_KEY not set — weather will use Gemini (approximate).")
     return warnings
