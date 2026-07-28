@@ -6,8 +6,10 @@
 
 - Python 3.11+
 - Flask (FastAPI acceptable as a drop-in swap if async/streaming needs outgrow Flask)
-- Gemini API (primary model provider; abstracted behind a provider interface so
-  more models can be added later)
+- Gemini API via the `google-genai` SDK (primary model provider; abstracted
+  behind `app/ai/gemini_client.py` so more models can be added later — note:
+  the older `google-generativeai` package and `gemini-1.5-x` models are
+  deprecated/shut down, don't reintroduce them — see `Memory.md`)
 - LangChain — optional, only if it earns its complexity; otherwise hand-rolled
   RAG/tool-calling is fine and easier to explain in a review
 - SQLite (dev) → PostgreSQL (future)
@@ -53,9 +55,56 @@ Request lifecycle for a chat turn:
 7. Frontend renders the streamed text and drives the particle sphere's state
    (idle → listening → thinking → speaking) off the stream lifecycle events.
 
-## Current State (Prototype)
+## Current State (Phase 1 complete)
 
-What actually exists in the repo right now, before Phase 1 work begins:
+Phase 1 is done. `gemini_retrieval.py` has been fully split apart and a real
+frontend now exists and is served by Flask:
+
+```text
+Nimbus-AI/
+├── docs/
+│   ├── PRD.md
+│   ├── Architecture.md
+│   ├── Design.md
+│   ├── Rules.md
+│   ├── Phases.md
+│   └── Memory.md
+├── app/
+│   ├── __init__.py       # Flask app factory — also serves frontend/ as static
+│   ├── config/settings.py
+│   ├── ai/gemini_client.py
+│   ├── tools/weather.py, crypto.py, search.py
+│   ├── memory/session_memory.py
+│   ├── agents/router.py
+│   └── api/routes.py     # POST /api/chat (streaming), GET /api/history
+├── frontend/
+│   ├── index.html
+│   ├── css/style.css
+│   └── js/app.js, particle-sphere.js, starfield.js
+├── examples/
+│   ├── conv_history.example.json   # sample output, not live data
+│   └── chat.log.example            # sample output, not live data
+├── data/                            # gitignored — real conv_history.json lands here
+├── .env.example
+├── .gitignore
+├── README.md
+├── requirements.txt
+├── run.py
+└── gemini_retrieval.py              # legacy — superseded by app/, kept for reference
+```
+
+`gemini_retrieval.py` no longer runs anything — `run.py` is the real entry
+point now. It's kept in the repo only as a reference for what the original
+prototype looked like; delete it whenever that's no longer useful.
+
+The section below is the original Phase 1 planning target, kept for history —
+compare against the tree above to see what changed during actual
+implementation (notably: `examples/`, `.env.example`, and `.gitignore` weren't
+in the original plan, and `tests/` still doesn't exist).
+
+## Original Phase 1 Planning Target
+
+What actually existed in the repo before Phase 1 work began:
 
 ```text
 Nimbus-AI/
@@ -76,13 +125,14 @@ Nimbus-AI/
 └── requirements.txt
 ```
 
-`gemini_retrieval.py` currently holds everything: Gemini calls, keyword-based
+`gemini_retrieval.py` used to hold everything: Gemini calls, keyword-based
 intent routing (crypto/weather/image/search/chit-chat), JSON conversation
-memory, and TTS. Phase 1 splits this single file apart into the `app/`
-structure below — `app/ai/` gets the Gemini client, `app/agents/` gets the
-routing logic (upgraded from keyword-matching to real intent handling),
-`app/memory/` gets the history persistence, `app/tools/` gets weather/search/
-crypto. Nothing here is thrown away; it's relocated and formalized.
+memory, and TTS. That's now split across the `app/` structure shown above and
+in the target structure below — `app/ai/` has the Gemini client, `app/agents/`
+has the routing logic (still keyword-based — upgrading to real intent
+handling is still open, see `Memory.md`), `app/memory/` has history
+persistence, `app/tools/` has weather/search/crypto. Nothing was thrown away;
+it was relocated and formalized.
 
 ## Target Folder Structure (Phase 1+)
 

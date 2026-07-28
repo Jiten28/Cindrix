@@ -103,3 +103,23 @@ animations (loading, success states) · CSS transitions for hover/focus states.
 
 Desktop-first. On tablet widths, the right info panel collapses behind a toggle;
 the left sidebar collapses to icons-only. Mobile is out of scope until Phase 5.
+
+## Implementation Status (Phase 1)
+
+What actually shipped vs. what's still just planned, since a couple of things
+drifted during the build:
+
+- **Right info panel** (model/memory/sentiment/tools-used/stats from the
+  original mockup) — **not built**. The simpler landing→chat layout took
+  priority. Revisit in Phase 2/3 if tool-use visibility becomes a real gap.
+- **Message formatting** — assistant replies render basic markdown (bold,
+  inline code, code fences) via a small hand-rolled parser in `app.js`, not a
+  library. Not in the original spec, added because Gemini's output needed it.
+- **Voice mode UI** — implemented as a single mic button that starts/stops a
+  full turn-based conversation loop, not a separate "voice mode" toggle
+  layered on top of always-available text chat. Simpler than what was
+  originally sketched, and matches what was actually asked for during the
+  build.
+- **Ambient glow behind the sphere** — added (soft radial gradient, not in
+  the original palette/motion spec) to keep the chat view from feeling empty
+  once the sphere shrinks down from its landing-page size.

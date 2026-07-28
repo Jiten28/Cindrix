@@ -5,49 +5,63 @@ until the current one's acceptance criteria are met and `Memory.md` is updated.
 
 ---
 
-## Phase 1 — Core Chat Experience
+## Phase 1 — Core Chat Experience ✅ COMPLETE
 
 **Goal:** A working chatbot with memory, Gemini responses, voice, and the
 animated face — the minimum "this feels alive" demo.
 
 Tasks:
 
-- Flask app skeleton (`app/api`, `app/config`, `run.py`)
-- Gemini API integration in `app/ai/` with streaming responses
-- Session-based short-term memory in `app/memory/`
-- Basic SQLite schema: `conversations`, `messages`
-- Chat UI: composer, message list, streaming render
-- Animated face: idle / thinking / talking / blink states wired to stream
-  lifecycle
-- Voice input (speech-to-text) and voice output (text-to-speech), basic version
-- Left sidebar: new chat, chat history list
+- [x] Flask app skeleton (`app/api`, `app/config`, `run.py`)
+- [x] Gemini API integration in `app/ai/` with streaming responses (built on
+      `google-genai`, not the originally-assumed `google-generativeai` — see
+      `Memory.md`)
+- [x] Session-based short-term memory in `app/memory/` — **JSON, not SQLite**
+      (interface kept stable so this can swap later without touching callers)
+- [x] Chat UI: composer, message list, streaming render
+- [x] Animated identity: **particle sphere, not a face** — idle / listening /
+      thinking / speaking states wired to stream lifecycle (see `Design.md`
+      for why the identity changed)
+- [x] Voice input (speech-to-text) and voice output (text-to-speech) — full
+      turn-based voice chat loop, not just basic version
+- [x] Left sidebar: new chat, chat history list
+- [x] Bonus, done ahead of schedule: weather, crypto, and web search tools
+      (originally planned for Phase 2 — see below)
 
-Acceptance criteria:
+Acceptance criteria: all met and confirmed working locally (real Gemini
+responses, streaming, voice loop, tool routing).
 
-- User can hold a multi-turn conversation that remembers earlier context
-- Face visibly changes state between idle → thinking → talking
-- Voice input transcribes correctly and voice output speaks the reply
+Not done in Phase 1 (deferred, see `Memory.md`): basic SQLite schema (JSON
+works fine for single-user local use so far); per-session memory isolation.
 
 ---
 
-## Phase 2 — Understanding & Tools
+## Phase 2 — Understanding & Tools (IN PROGRESS)
 
 **Goal:** NIMBUS can see, read, and look things up.
 
-Tasks:
+Already done in Phase 1 (moved up):
 
-- Image upload + vision understanding
-- File upload: PDF, TXT, DOCX parsing → RAG pipeline (chunk + embed + retrieve)
-- OCR for scanned documents/images
-- Web search tool integration
-- Weather lookup tool
-- Face "searching" state wired to tool-use events
+- [x] ~~Web search tool integration~~
+- [x] ~~Weather lookup tool~~
+
+Remaining tasks:
+
+- [ ] Image upload + vision understanding
+- [ ] File upload: PDF, TXT, DOCX parsing → RAG pipeline (chunk + embed + retrieve)
+- [ ] OCR for scanned documents/images
+- [ ] "Searching"/"reading" sphere state wired to tool-use events (partial —
+      sphere already has a "thinking" state during tool calls; a distinct
+      visual for "actively reading a document" is still open)
 
 Acceptance criteria:
 
 - User can upload a PDF and ask questions about its content
-- User can ask a live question ("what's the weather in X") and get a real answer
-- Tool calls are visible in the right-side info panel (active tools)
+- User can ask a live question ("what's the weather in X") and get a real
+  answer — already true since Phase 1
+- Tool calls are visible somewhere in the UI (right-side info panel from the
+  original mockup was dropped in favor of the simpler landing/chat layout —
+  revisit if this becomes a real gap)
 
 ---
 

@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Nimbus AI</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<div class="app">
+
+  <!-- Background layers -->
+  <canvas id="starfield" aria-hidden="true"></canvas>
+
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-name">Nimbus AI</span>
+    </div>
+
+    <button class="new-chat-btn" id="newChatBtn">
+      <span aria-hidden="true">+</span> New Chat
+    </button>
+
+    <div class="sidebar-section">
+      <h2 class="sidebar-label">Recent</h2>
+      <ul class="chat-list" id="chatList">
+        <li class="chat-list-empty">No conversations yet</li>
+      </ul>
+    </div>
+
+    <div class="sidebar-section">
+      <h2 class="sidebar-label">Explore</h2>
+      <ul class="explore-list">
+        <li>Agents</li>
+        <li>Documents</li>
+        <li>Images</li>
+        <li>Voice</li>
+        <li>Coding</li>
+      </ul>
+    </div>
+
+    <div class="sidebar-footer">
+      <button class="sidebar-footer-btn">Settings</button>
+      <button class="sidebar-footer-btn">Profile</button>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+
+    <header class="topbar">
+      <button class="icon-btn" id="sidebarToggle" aria-label="Toggle sidebar">☰</button>
+      <div class="topbar-title">Nimbus AI</div>
+      <div class="topbar-controls">
+        <select id="voiceSelect" class="voice-select" title="Voice used for spoken replies during voice chat"></select>
+      </div>
+      <div class="topbar-status">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span id="modelName">Gemini</span>
+      </div>
+    </header>
+
+    <div class="sphere-stage">
+      <canvas id="sphere" aria-hidden="true"></canvas>
+      <p class="sphere-state" id="sphereState">Idle</p>
+    </div>
+
+    <!-- Landing (empty state) -->
+    <section class="landing" id="landing">
+      <h1 class="landing-title">Intelligent. Creative. Limitless.</h1>
+      <p class="landing-subtitle">What would you like to discover today?</p>
+
+      <div class="suggestions">
+        <button class="chip">Code Generation</button>
+        <button class="chip">Deep Research</button>
+        <button class="chip">Resume Review</button>
+        <button class="chip">Travel Planning</button>
+        <button class="chip">Data Analysis</button>
+      </div>
+    </section>
+
+    <!-- Chat (active conversation) -->
+    <section class="chat" id="chat" hidden>
+      <div class="messages" id="messages" role="log" aria-live="polite"></div>
+    </section>
+
+    <!-- Composer -->
+    <form class="composer" id="composerForm">
+      <button type="button" class="icon-btn composer-attach" id="attachBtn" aria-label="Attach file" title="File upload arrives in Phase 2">📎</button>
+      <input
+        type="text"
+        id="composerInput"
+        class="composer-input"
+        placeholder="Ask Nimbus anything..."
+        autocomplete="off"
+      />
+      <button type="button" class="icon-btn composer-mic" id="micBtn" aria-label="Start voice chat" title="Start voice chat">🎤</button>
+      <button type="submit" class="composer-send" aria-label="Send message">↑</button>
+    </form>
+
+  </main>
+</div>
+
+<script src="js/starfield.js"></script>
+<script src="js/particle-sphere.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
