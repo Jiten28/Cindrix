@@ -1,12 +1,21 @@
 /**
- * NimbusSphere — the particle-sphere identity from docs/Design.md.
- * ~220 points on a Fibonacci lattice; state changes radius, rotation speed,
- * and per-particle offset only — the lattice itself never changes.
+ * createNimbusSphere — factory for the particle-sphere identity from
+ * docs/Design.md. ~220 points on a Fibonacci lattice; state changes radius,
+ * rotation speed, and per-particle offset only — the lattice itself never
+ * changes.
  *
- * Public API: window.NimbusSphere.setState("idle" | "listening" | "thinking" | "speaking")
+ * Refactored into a factory (Phase 2b) so the landing orb and the docked
+ * chat-mode orb can each run their own independent instance/canvas — needed
+ * for a smooth crossfade transition between them, since a single canvas
+ * element can't be smoothly animated between position:static and
+ * position:fixed.
+ *
+ * Usage: const orb = window.createNimbusSphere("sphere", "sphereState");
+ * orb.setState("idle" | "listening" | "thinking" | "speaking")
  */
-window.NimbusSphere = (function () {
-  const canvas = document.getElementById("sphere");
+window.createNimbusSphere = function (canvasId, labelId) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return { setState() {}, getState() { return "idle"; }, setPaused() {}, resize() {} };
   const ctx = canvas.getContext("2d");
 
   const ACCENT = [99, 102, 241];   // --accent  #6366F1
@@ -32,6 +41,7 @@ window.NimbusSphere = (function () {
   let t = 0;
   let rotY = 0;
   let w = 0, h = 0, dpr = 1;
+  let paused = false;
   const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   function resize() {
@@ -39,6 +49,7 @@ window.NimbusSphere = (function () {
     const rect = canvas.getBoundingClientRect();
     w = rect.width;
     h = rect.height;
+    if (w === 0 || h === 0) return;
     canvas.width = w * dpr;
     canvas.height = h * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -58,6 +69,7 @@ window.NimbusSphere = (function () {
   }
 
   function tick(dt) {
+    if (paused || w === 0 || h === 0) return;
     t += dt;
     rotY += rotSpeed() * dt;
 
@@ -119,7 +131,6 @@ window.NimbusSphere = (function () {
   }
 
   window.addEventListener("resize", resize);
-  // sphere size changes on chat-active (see CSS) — observe it directly
   new ResizeObserver(resize).observe(canvas);
   resize();
 
@@ -133,12 +144,18 @@ window.NimbusSphere = (function () {
     setState(next) {
       if (["idle", "listening", "thinking", "speaking"].includes(next)) {
         state = next;
-        const label = document.getElementById("sphereState");
-        if (label) label.textContent = next.charAt(0).toUpperCase() + next.slice(1);
+        // Label is intentionally not updated with the routine state name
+        // anymore — the orb's motion communicates state, and the label is
+        // reserved for transient messages (mic errors, "Reading file…") via
+        // app.js's flashStateMessage. See docs/Memory.md.
       }
     },
     getState() {
       return state;
     },
+    setPaused(next) {
+      paused = next;
+    },
+    resize,
   };
-})();
+};

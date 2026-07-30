@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Nimbus AI</title>
 <link rel="stylesheet" href="css/style.css" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css" />
 </head>
 <body>
 
 <div class="app">
 
-  <!-- Background layers -->
   <canvas id="starfield" aria-hidden="true"></canvas>
 
   <!-- Sidebar -->
@@ -63,53 +63,73 @@
       </div>
     </header>
 
-    <div class="sphere-stage">
-      <canvas id="sphere" aria-hidden="true"></canvas>
-      <p class="sphere-state" id="sphereState">Idle</p>
-    </div>
-
-    <!-- Landing (empty state) -->
+    <!-- Landing (empty state) — unchanged, exactly as before -->
     <section class="landing" id="landing">
+      <div class="sphere-stage sphere-stage-landing">
+        <canvas id="sphere" aria-hidden="true"></canvas>
+        <p class="sphere-state" id="sphereState"></p>
+      </div>
+
       <h1 class="landing-title">Intelligent. Creative. Limitless.</h1>
       <p class="landing-subtitle">What would you like to discover today?</p>
 
       <div class="suggestions">
-        <button class="chip">Code Generation</button>
-        <button class="chip">Deep Research</button>
-        <button class="chip">Resume Review</button>
-        <button class="chip">Travel Planning</button>
-        <button class="chip">Data Analysis</button>
+        <button class="chip" data-prompt="Code Generation">Code Generation</button>
+        <button class="chip" data-prompt="Deep Research">Deep Research</button>
+        <button class="chip" data-prompt="Resume Review">Resume Review</button>
+        <button class="chip" data-prompt="Travel Planning">Travel Planning</button>
+        <button class="chip" data-prompt="Data Analysis">Data Analysis</button>
       </div>
     </section>
 
-    <!-- Chat (active conversation) -->
+    <!-- Chat (active conversation) — page scrolls naturally, no inner scrollbar -->
     <section class="chat" id="chat" hidden>
       <div class="messages" id="messages" role="log" aria-live="polite"></div>
     </section>
 
-    <!-- Composer -->
-    <div class="attachment-chip" id="attachmentChip" hidden>
-      <span id="attachmentChipLabel"></span>
-      <button type="button" id="attachmentChipRemove" aria-label="Remove attachment">✕</button>
+    <!-- Sticky composer -->
+    <div class="composer-dock">
+      <div class="attachment-chip" id="attachmentChip" hidden>
+        <span id="attachmentChipLabel"></span>
+        <button type="button" id="attachmentChipRemove" aria-label="Remove attachment">✕</button>
+      </div>
+
+      <div class="attach-menu" id="attachMenu" hidden>
+        <button type="button" class="attach-menu-item" data-prompt="Code Generation">💻 Code Generation</button>
+        <button type="button" class="attach-menu-item" data-prompt="Deep Research">🔎 Deep Research</button>
+        <button type="button" class="attach-menu-item" data-prompt="Resume Review">📄 Resume Review</button>
+        <button type="button" class="attach-menu-item" data-prompt="Travel Planning">✈️ Travel Planning</button>
+        <button type="button" class="attach-menu-item" data-prompt="Data Analysis">📊 Data Analysis</button>
+        <div class="attach-menu-divider"></div>
+        <button type="button" class="attach-menu-item" id="attachMenuUpload">📎 Upload document or image</button>
+      </div>
+
+      <form class="composer" id="composerForm">
+        <button type="button" class="icon-btn composer-attach" id="attachBtn" aria-label="Attach or use a quick action" title="Attach a document/image or use a quick action">+</button>
+        <input type="file" id="fileInput" accept=".pdf,.txt,.docx,.png,.jpg,.jpeg,.webp" hidden />
+        <input
+          type="text"
+          id="composerInput"
+          class="composer-input"
+          placeholder="Ask Nimbus anything..."
+          autocomplete="off"
+        />
+        <button type="button" class="icon-btn composer-mic" id="micBtn" aria-label="Start voice chat" title="Start voice chat">🎤</button>
+        <button type="submit" class="composer-send" aria-label="Send message">↑</button>
+      </form>
     </div>
 
-    <form class="composer" id="composerForm">
-      <button type="button" class="icon-btn composer-attach" id="attachBtn" aria-label="Attach file" title="Attach a document or image">📎</button>
-      <input type="file" id="fileInput" accept=".pdf,.txt,.docx,.png,.jpg,.jpeg,.webp" hidden />
-      <input
-        type="text"
-        id="composerInput"
-        class="composer-input"
-        placeholder="Ask Nimbus anything..."
-        autocomplete="off"
-      />
-      <button type="button" class="icon-btn composer-mic" id="micBtn" aria-label="Start voice chat" title="Start voice chat">🎤</button>
-      <button type="submit" class="composer-send" aria-label="Send message">↑</button>
-    </form>
-
   </main>
+
+  <!-- AI orb — lives outside .main once chat starts, fixed at right-center -->
+  <div class="orb-dock" id="orbDock">
+    <canvas id="sphereChat" aria-hidden="true"></canvas>
+    <p class="sphere-state" id="sphereStateChat"></p>
+  </div>
+
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="js/starfield.js"></script>
 <script src="js/particle-sphere.js"></script>
 <script src="js/app.js"></script>

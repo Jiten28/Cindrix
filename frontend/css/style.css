@@ -15,18 +15,27 @@
   --radius-full: 999px;
 
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --composer-h: 96px;
 }
 
 * { box-sizing: border-box; }
 
+/* The browser's default [hidden]{display:none} loses to any component that
+   sets its own `display` (e.g. .attachment-chip's display:flex) — same
+   specificity, and the component's rule tends to come later/be more
+   specific. This makes `hidden` always win, so JS toggling el.hidden = true
+   reliably hides things regardless of what else the component declares. */
+[hidden] { display: none !important; }
+
 html, body {
   margin: 0;
   padding: 0;
-  height: 100%;
+  min-height: 100%;
   background: var(--bg);
   color: var(--text);
   font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  overflow: hidden;
+  /* Phase 2b: page scrolls naturally now — no more overflow:hidden trapping
+     the chat inside a fixed-height box. See docs/Memory.md for why. */
 }
 
 button {
@@ -45,7 +54,7 @@ ul { list-style: none; margin: 0; padding: 0; }
 .app {
   position: relative;
   display: flex;
-  height: 100vh;
+  min-height: 100vh;
   width: 100vw;
 }
 
@@ -57,12 +66,15 @@ ul { list-style: none; margin: 0; padding: 0; }
 }
 
 /* ============================================================
-   Sidebar
+   Sidebar — sticky, not part of the page scroll
    ============================================================ */
 .sidebar {
-  position: relative;
-  z-index: 2;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  z-index: 3;
   width: 260px;
+  height: 100vh;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -192,23 +204,31 @@ ul { list-style: none; margin: 0; padding: 0; }
 }
 
 /* ============================================================
-   Main column
+   Main column — no longer height-locked; page scrolls through it
    ============================================================ */
 .main {
   position: relative;
   z-index: 2;
   flex: 1;
-  display: flex;
-  flex-direction: column;
   min-width: 0;
 }
 
 .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 14px 20px;
-  flex-shrink: 0;
+  background: rgba(9, 9, 11, 0.72);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid transparent;
+}
+
+.app.chat-active .topbar {
+  border-bottom-color: var(--card-border);
 }
 
 .topbar-title {
@@ -274,47 +294,40 @@ ul { list-style: none; margin: 0; padding: 0; }
 }
 
 /* ============================================================
-   Sphere
+   Landing (empty state) — unchanged from Phase 2, per spec
    ============================================================ */
-.sphere-stage {
-  flex-shrink: 0;
+.landing {
+  min-height: calc(100vh - 63px);
+  max-height: 100vh;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding-top: 8px;
-  transition: padding 0.4s var(--ease);
+  gap: 10px;
+  padding: 0 20px 40px;
+  text-align: center;
+  transition: opacity 0.5s var(--ease), transform 0.5s var(--ease),
+    max-height 0.5s var(--ease), min-height 0.5s var(--ease);
 }
 
-#sphere {
-  width: 220px;
-  height: 220px;
-  transition: width 0.4s var(--ease), height 0.4s var(--ease);
+.landing.landing-exit {
+  opacity: 0;
+  transform: scale(0.97) translateY(-14px);
+  max-height: 0;
+  min-height: 0;
+  pointer-events: none;
 }
 
-.chat-active .sphere-stage { padding-top: 0; }
-.chat-active #sphere { width: 140px; height: 140px; }
-
-.sphere-stage {
+.sphere-stage-landing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   position: relative;
 }
 
-.sphere-stage::before {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 340px;
-  height: 340px;
-  transform: translate(-50%, -50%);
-  background: radial-gradient(circle, rgba(139, 92, 246, 0.14) 0%, rgba(99, 102, 241, 0.06) 40%, transparent 70%);
-  filter: blur(4px);
-  pointer-events: none;
-  z-index: -1;
-  transition: width 0.4s var(--ease), height 0.4s var(--ease);
-}
-
-.chat-active .sphere-stage::before {
+#sphere {
   width: 220px;
   height: 220px;
 }
@@ -324,20 +337,6 @@ ul { list-style: none; margin: 0; padding: 0; }
   font-size: 12px;
   color: var(--text-secondary);
   letter-spacing: 0.03em;
-}
-
-/* ============================================================
-   Landing (empty state)
-   ============================================================ */
-.landing {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 0 20px 40px;
-  text-align: center;
 }
 
 .landing-title {
@@ -381,74 +380,134 @@ ul { list-style: none; margin: 0; padding: 0; }
 }
 
 /* ============================================================
-   Chat (active conversation)
+   Chat (active conversation) — flows naturally, page scrolls
    ============================================================ */
 .chat {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  min-height: 0;
+  position: relative;
+  z-index: 2;
 }
 
 .messages {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px 20px 20px;
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 40px 24px calc(var(--composer-h) + 70px);
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  max-width: 720px;
+  gap: 22px;
   width: 100%;
-  margin: 0 auto;
+}
+
+@media (min-width: 1025px) {
+  .app.chat-active .main {
+    padding-right: 260px;
+  }
+}
+
+@media (min-width: 1600px) {
+  .app.chat-active .main {
+    padding-right: 320px;
+  }
+  .messages {
+    max-width: 920px;
+  }
+}
+
+.msg-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  animation: msg-in 0.3s var(--ease);
+}
+
+.msg-group.user { align-items: flex-end; }
+.msg-group.assistant { align-items: flex-start; }
+
+@keyframes msg-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .msg {
   max-width: 78%;
-  padding: 12px 16px;
+  padding: 16px 20px;
   border-radius: var(--radius-lg);
   font-size: 14.5px;
-  line-height: 1.5;
+  line-height: 1.6;
   word-wrap: break-word;
-  animation: msg-in 0.25s var(--ease);
-}
-
-@keyframes msg-in {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
 }
 
 .msg-user {
-  align-self: flex-end;
   background: linear-gradient(135deg, var(--accent), #4F46E5);
   color: var(--text);
   border-bottom-right-radius: 6px;
 }
 
 .msg-assistant {
-  align-self: flex-start;
   background: var(--card);
   border: 1px solid var(--card-border);
   color: var(--text);
   border-bottom-left-radius: 6px;
 }
 
-.msg-assistant.pending::after {
-  content: "";
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  margin-left: 4px;
+.msg-assistant.pending .typing-dots {
+  display: inline-flex;
+  gap: 3px;
+  padding: 2px 0;
+}
+
+.typing-dots span {
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: var(--text-secondary);
-  animation: pulse-dot 1s infinite ease-in-out;
+  animation: typing-bounce 1s infinite ease-in-out;
+}
+.typing-dots span:nth-child(2) { animation-delay: 0.15s; }
+.typing-dots span:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-4px); opacity: 1; }
 }
 
-@keyframes pulse-dot {
-  0%, 100% { opacity: 0.3; }
-  50% { opacity: 1; }
+/* per-message action row (copy / regenerate / edit) */
+.msg-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s var(--ease);
+  padding: 0 4px;
 }
 
+.msg-group:hover .msg-actions,
+.msg-group:focus-within .msg-actions {
+  opacity: 1;
+}
+
+.msg-action-btn {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 12px;
+  transition: background 0.15s var(--ease), color 0.15s var(--ease);
+}
+
+.msg-action-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
+.msg-action-btn.copied {
+  color: #4ADE80;
+}
+
+/* ============================================================
+   Rendered markdown content
+   ============================================================ */
 .msg pre {
   background: rgba(0, 0, 0, 0.4);
   border: 1px solid var(--card-border);
@@ -473,9 +532,139 @@ ul { list-style: none; margin: 0; padding: 0; }
 .msg strong { font-weight: 700; }
 .msg em { font-style: italic; }
 
+.msg h1, .msg h2, .msg h3, .msg h4, .msg h5, .msg h6 {
+  margin: 16px 0 8px;
+  line-height: 1.35;
+  font-weight: 700;
+}
+.msg h1:first-child, .msg h2:first-child, .msg h3:first-child,
+.msg h4:first-child, .msg h5:first-child, .msg h6:first-child {
+  margin-top: 2px;
+}
+.msg h1 { font-size: 1.4em; }
+.msg h2 { font-size: 1.28em; }
+.msg h3 { font-size: 1.18em; }
+.msg h4 { font-size: 1.08em; }
+.msg h5, .msg h6 { font-size: 1em; text-transform: uppercase; letter-spacing: 0.02em; color: var(--text-secondary); }
+
+.msg hr {
+  border: none;
+  border-top: 1px solid var(--card-border);
+  margin: 16px 0;
+}
+
+.msg ul, .msg ol {
+  margin: 10px 0;
+  padding-left: 24px;
+}
+.msg ul { list-style: disc; }
+.msg ol { list-style: decimal; }
+.msg li { margin: 5px 0; }
+
+.msg table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 14px 0;
+  font-size: 13.5px;
+}
+.msg th, .msg td {
+  border: 1px solid var(--card-border);
+  padding: 6px 10px;
+  text-align: left;
+}
+.msg th {
+  background: rgba(255, 255, 255, 0.06);
+  font-weight: 600;
+}
+
+.msg img {
+  max-width: 100%;
+  border-radius: var(--radius-md);
+  margin: 8px 0;
+  display: block;
+}
+
 /* ============================================================
-   Attachment chip
+   AI orb dock — fixed at right-center once chat is active
    ============================================================ */
+.orb-dock {
+  position: fixed;
+  top: 50%;
+  right: 40px;
+  z-index: 4;
+  width: 240px;
+  height: 240px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(36px, -50%) scale(0.85);
+  transition: opacity 0.55s var(--ease), transform 0.55s var(--ease);
+}
+
+.orb-dock::before {
+  content: "";
+  position: absolute;
+  inset: -70px;
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.16) 0%, rgba(99, 102, 241, 0.06) 45%, transparent 70%);
+  filter: blur(6px);
+  z-index: -1;
+}
+
+.app.chat-active .orb-dock {
+  opacity: 1;
+  transform: translate(0, -50%) scale(1);
+}
+
+#sphereChat {
+  width: 100%;
+  height: 100%;
+}
+
+@media (min-width: 1600px) {
+  .orb-dock {
+    width: 300px;
+    height: 300px;
+    right: 56px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .orb-dock {
+    width: 130px;
+    height: 130px;
+    right: 16px;
+  }
+}
+
+@media (max-width: 640px) {
+  .orb-dock {
+    top: auto;
+    bottom: calc(var(--composer-h) + 16px);
+    right: 12px;
+    width: 56px;
+    height: 56px;
+    transform: translate(0, 0) scale(0.85);
+  }
+  .app.chat-active .orb-dock {
+    transform: translate(0, 0) scale(1);
+  }
+  .orb-dock .sphere-state { display: none; }
+}
+
+/* ============================================================
+   Sticky composer dock
+   ============================================================ */
+.composer-dock {
+  position: sticky;
+  bottom: 0;
+  z-index: 6;
+  padding: 22px 20px 20px;
+  background: linear-gradient(to top, var(--bg) 58%, transparent);
+}
+
 .attachment-chip {
   display: flex;
   align-items: center;
@@ -505,17 +694,52 @@ ul { list-style: none; margin: 0; padding: 0; }
   color: var(--text);
 }
 
-/* ============================================================
-   Composer
-   ============================================================ */
+.attach-menu {
+  max-width: 260px;
+  margin: 0 auto 8px;
+  background: rgba(24, 24, 27, 0.92);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  padding: 6px;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  animation: menu-in 0.15s var(--ease);
+}
+
+@keyframes menu-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.attach-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 9px 12px;
+  border-radius: var(--radius-md);
+  font-size: 13.5px;
+  color: var(--text);
+  transition: background 0.15s var(--ease);
+}
+
+.attach-menu-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.attach-menu-divider {
+  height: 1px;
+  background: var(--card-border);
+  margin: 4px 6px;
+}
+
 .composer {
-  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 8px;
   max-width: 720px;
   width: calc(100% - 40px);
-  margin: 0 auto 22px;
+  margin: 0 auto;
   padding: 8px 8px 8px 16px;
   border-radius: var(--radius-full);
   background: rgba(24, 24, 27, 0.75);
@@ -542,6 +766,11 @@ ul { list-style: none; margin: 0; padding: 0; }
 
 .composer-input::placeholder {
   color: var(--text-secondary);
+}
+
+.composer-attach {
+  font-size: 20px;
+  font-weight: 300;
 }
 
 .composer-send {
@@ -578,7 +807,6 @@ ul { list-style: none; margin: 0; padding: 0; }
   .sidebar {
     position: fixed;
     inset: 0 auto 0 0;
-    height: 100vh;
   }
   .sidebar:not(.collapsed) { box-shadow: 0 0 40px rgba(0,0,0,0.5); }
   .sidebar.collapsed { margin-left: -260px; }
