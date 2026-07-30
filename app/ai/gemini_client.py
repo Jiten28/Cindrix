@@ -68,3 +68,24 @@ def stream_gemini(prompt: str) -> Generator[str, None, None]:
                 yield chunk.text
     except Exception as e:
         yield f"(Gemini error: {e})"
+
+
+def stream_gemini_vision(prompt: str, image_bytes: bytes, mime_type: str) -> Generator[str, None, None]:
+    """Streaming call with an image attached — used for image understanding
+    (Phase 2). Also covers the OCR use case: Gemini reads text embedded in
+    images natively, so a scanned document just works here without a
+    separate OCR library."""
+    if not settings.GOOGLE_API_KEY:
+        yield "Gemini is not configured (missing GOOGLE_API_KEY)."
+        return
+    try:
+        image_part = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
+        stream = _get_client().models.generate_content_stream(
+            model=settings.GEMINI_MODEL,
+            contents=[image_part, prompt],
+        )
+        for chunk in stream:
+            if chunk.text:
+                yield chunk.text
+    except Exception as e:
+        yield f"(Gemini error: {e})"

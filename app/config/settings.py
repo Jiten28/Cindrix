@@ -17,6 +17,11 @@ OPENWEATHER_API_KEY: str = os.getenv("OPENWEATHER_API_KEY", "").strip()
 HISTORY_FILE: str = os.getenv("HISTORY_FILE", "data/conv_history.json").strip()
 
 GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-flash-latest").strip()
+GEMINI_EMBEDDING_MODEL: str = os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-001").strip()
+
+UPLOAD_DIR: str = os.getenv("UPLOAD_DIR", "data/uploads").strip()
+EMBEDDING_DIR: str = os.getenv("EMBEDDING_DIR", "data/embeddings").strip()
+MAX_UPLOAD_MB: int = int(os.getenv("MAX_UPLOAD_MB", "15"))
 
 # Flask
 DEBUG: bool = os.getenv("FLASK_DEBUG", "true").lower() == "true"

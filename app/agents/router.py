@@ -8,7 +8,9 @@ don't jump ahead of it).
 import re
 from typing import Dict, Generator, List
 
-from app.ai.gemini_client import call_gemini, stream_gemini
+from app.ai.embeddings import top_k_chunks
+from app.ai.gemini_client import call_gemini, stream_gemini, stream_gemini_vision
+from app.memory.attachment_store import get_active
 from app.memory.session_memory import recent_context
 from app.tools.crypto import get_crypto_price
 from app.tools.search import google_search
@@ -60,11 +62,43 @@ def route_query(user_input: str, history: List[Dict]) -> str:
 def stream_route_query(user_input: str, history: List[Dict]) -> Generator[str, None, None]:
     """Streaming entry point used by the /api/chat SSE route. Tool answers are
     yielded as one chunk (they're already complete); Gemini answers stream
-    token by token."""
+    token by token.
+
+    Priority order: explicit tool intent (weather/crypto/search) first, then
+    an active attachment (uploaded document → RAG, uploaded image → vision),
+    then a plain conversational answer. An uploaded file doesn't hijack every
+    message — "what's the weather" still checks the weather even with a
+    document attached — but once tool intent is ruled out, the attachment
+    gets first shot at answering before falling back to plain chat.
+    """
     tool_answer = route_query(user_input, history)
     if tool_answer:
         yield tool_answer
         return
+
+    attachment = get_active()
+    if attachment:
+        if attachment["kind"] == "image":
+            with open(attachment["filepath"], "rb") as f:
+                image_bytes = f.read()
+            yield from stream_gemini_vision(user_input, image_bytes, attachment["mime_type"])
+            return
+
+        if attachment["kind"] == "document":
+            relevant_chunks = top_k_chunks(
+                user_input, attachment["chunks"], attachment["embeddings"], k=4
+            )
+            context_block = "\n\n---\n\n".join(relevant_chunks)
+            prompt = (
+                f"You are Nimbus, a helpful, concise AI assistant. The user has "
+                f"uploaded a document called '{attachment['filename']}'. Use the "
+                f"following excerpts from it to answer their question. If the "
+                f"excerpts don't contain the answer, say so rather than guessing.\n\n"
+                f"Document excerpts:\n{context_block}\n\n"
+                f"User question: {user_input}\nNimbus:"
+            )
+            yield from stream_gemini(prompt)
+            return
 
     context = recent_context(history)
     prompt = (

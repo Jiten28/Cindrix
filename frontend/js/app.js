@@ -71,6 +71,8 @@
     messagesEl.innerHTML = "";
     sphere.setState("idle");
     currentTitle = null;
+    hideAttachmentChip();
+    fetch("/api/attachment", { method: "DELETE" }).catch(() => {});
   }
 
   // ---------- sidebar ----------
@@ -341,13 +343,70 @@
   // ---------- attach button (file upload — Phase 2) ----------
 
   const attachBtn = document.getElementById("attachBtn");
-  attachBtn.addEventListener("click", () => {
-    const label = document.getElementById("sphereState");
-    if (!label) return;
+  const fileInput = document.getElementById("fileInput");
+  const attachmentChip = document.getElementById("attachmentChip");
+  const attachmentChipLabel = document.getElementById("attachmentChipLabel");
+  const attachmentChipRemove = document.getElementById("attachmentChipRemove");
+  const sphereStateLabelEl = document.getElementById("sphereState");
+
+  function flashSphereMessage(text, ms = 2500) {
+    if (!sphereStateLabelEl) return;
     const prev = sphere.getState();
-    label.textContent = "File upload arrives in Phase 2";
+    sphereStateLabelEl.textContent = text;
     setTimeout(() => {
-      label.textContent = prev.charAt(0).toUpperCase() + prev.slice(1);
-    }, 2500);
+      sphereStateLabelEl.textContent = prev.charAt(0).toUpperCase() + prev.slice(1);
+    }, ms);
+  }
+
+  function showAttachmentChip(kind, filename) {
+    const icon = kind === "image" ? "🖼️" : "📄";
+    attachmentChipLabel.textContent = `${icon} ${filename}`;
+    attachmentChip.hidden = false;
+  }
+
+  function hideAttachmentChip() {
+    attachmentChip.hidden = true;
+    attachmentChipLabel.textContent = "";
+  }
+
+  attachBtn.addEventListener("click", () => fileInput.click());
+
+  fileInput.addEventListener("change", async () => {
+    const file = fileInput.files[0];
+    fileInput.value = ""; // allow re-selecting the same file later
+    if (!file) return;
+
+    sphere.setState("thinking");
+    flashSphereMessage(`Reading ${file.name}…`, 60000); // cleared below on response
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await fetch("/api/upload", { method: "POST", body: formData });
+      const data = await res.json();
+
+      if (!res.ok) {
+        flashSphereMessage(data.error || "Upload failed", 3000);
+        sphere.setState("idle");
+        return;
+      }
+
+      showAttachmentChip(data.kind, data.filename);
+      sphereStateLabelEl.textContent = "Idle";
+      sphere.setState("idle");
+    } catch (err) {
+      flashSphereMessage("Couldn't reach the server to upload that file", 3000);
+      sphere.setState("idle");
+    }
+  });
+
+  attachmentChipRemove.addEventListener("click", async () => {
+    try {
+      await fetch("/api/attachment", { method: "DELETE" });
+    } catch (err) {
+      // best-effort — hide the chip either way, it's just UI state
+    }
+    hideAttachmentChip();
   });
 })();

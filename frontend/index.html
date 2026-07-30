@@ -88,8 +88,14 @@
     </section>
 
     <!-- Composer -->
+    <div class="attachment-chip" id="attachmentChip" hidden>
+      <span id="attachmentChipLabel"></span>
+      <button type="button" id="attachmentChipRemove" aria-label="Remove attachment">✕</button>
+    </div>
+
     <form class="composer" id="composerForm">
-      <button type="button" class="icon-btn composer-attach" id="attachBtn" aria-label="Attach file" title="File upload arrives in Phase 2">📎</button>
+      <button type="button" class="icon-btn composer-attach" id="attachBtn" aria-label="Attach file" title="Attach a document or image">📎</button>
+      <input type="file" id="fileInput" accept=".pdf,.txt,.docx,.png,.jpg,.jpeg,.webp" hidden />
       <input
         type="text"
         id="composerInput"
