@@ -30,5 +30,13 @@
     "tool_used": "general",
     "latency_ms": 10424,
     "message_len": 27
+  },
+  {
+    "ts": "2026-07-31T08:38:39.259853+00:00",
+    "event_type": "chat_turn",
+    "conversation_id": "849e91a875c5",
+    "tool_used": "general",
+    "latency_ms": 17873,
+    "message_len": 64
   }
 ]

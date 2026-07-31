@@ -542,6 +542,7 @@
   let availableVoices = [];
 
   function loadVoices() {
+    const previousSelection = voiceSelect.value;
     availableVoices = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
     if (!availableVoices.length) return;
     voiceSelect.innerHTML = "";
@@ -552,6 +553,14 @@
       opt.textContent = `${v.name} (${v.lang})`;
       voiceSelect.appendChild(opt);
     });
+    // The browser can fire onvoiceschanged more than once, which used to
+    // silently reset the selection back to the first option every time —
+    // that's the "keeps switching back to the default voice" bug. Restore
+    // whatever was previously selected if it's still in the list.
+    const stillExists = Array.from(voiceSelect.options).some((o) => o.value === previousSelection);
+    if (previousSelection && stillExists) {
+      voiceSelect.value = previousSelection;
+    }
   }
   if ("speechSynthesis" in window) {
     loadVoices();

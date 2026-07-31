@@ -402,16 +402,12 @@ ul { list-style: none; margin: 0; padding: 0; }
   width: 100%;
 }
 
-@media (min-width: 1025px) {
-  .app.chat-active .main {
-    padding-right: 260px;
-  }
-}
-
+/* No padding-right hack on .main here anymore — it caused a horizontal
+   scrollbar (padding adds to total width) and shortened the topbar's
+   border since the topbar sits inside that padded box. The centered
+   .messages column already leaves enough natural gap from the fixed orb
+   at normal widths without it. */
 @media (min-width: 1600px) {
-  .app.chat-active .main {
-    padding-right: 320px;
-  }
   .messages {
     max-width: 920px;
   }
