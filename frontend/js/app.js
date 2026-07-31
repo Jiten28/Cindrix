@@ -27,14 +27,15 @@
   const appRoot = document.querySelector(".app");
 
   let currentTitle = null;
+  let currentConversationId = null;
   let lastUserText = null; // for regenerate
 
   // ---------- tiny markdown renderer ----------
   // Supports: ```code fences``` (+ hljs highlighting), `inline code`,
-  // **bold**, *italic*, ![images](url), tables, and - / 1. lists.
-  // Hand-rolled instead of a library — Gemini's output only ever needs this
-  // subset, and escaping HTML first keeps it safe even though the content is
-  // model-generated, not directly user-controllable.
+  // **bold**, *italic*, ![images](url), tables, headings, horizontal rules,
+  // and - / 1. lists. Hand-rolled instead of a library — Gemini's output
+  // only ever needs this subset, and escaping HTML first keeps it safe even
+  // though the content is model-generated, not directly user-controllable.
 
   function escapeHtml(str) {
     return str
@@ -182,10 +183,12 @@
     landingSphere.setState("idle");
     chatSphere.setState("idle");
     currentTitle = null;
+    currentConversationId = null;
     lastUserText = null;
     hideAttachmentChip();
     closeAttachMenu();
     fetch("/api/attachment", { method: "DELETE" }).catch(() => {});
+    renderSidebarActive();
   }
 
   // ---------- sidebar ----------
@@ -196,13 +199,67 @@
 
   newChatBtn.addEventListener("click", resetToLanding);
 
-  function addSidebarEntry(title) {
-    const empty = chatList.querySelector(".chat-list-empty");
-    if (empty) empty.remove();
-    const li = document.createElement("li");
-    li.textContent = title;
-    chatList.prepend(li);
+  async function refreshConversationList() {
+    try {
+      const res = await fetch("/api/conversations");
+      const list = await res.json();
+      chatList.innerHTML = "";
+      if (!list.length) {
+        chatList.innerHTML = '<li class="chat-list-empty">No conversations yet</li>';
+        return;
+      }
+      list.forEach((conv) => {
+        const li = document.createElement("li");
+        li.textContent = conv.title;
+        li.dataset.id = conv.id;
+        li.addEventListener("click", () => loadConversationIntoView(conv.id));
+        chatList.appendChild(li);
+      });
+      renderSidebarActive();
+    } catch (err) {
+      // best-effort — sidebar just stays as it was
+    }
   }
+
+  function renderSidebarActive() {
+    chatList.querySelectorAll("li[data-id]").forEach((li) => {
+      li.classList.toggle("active", li.dataset.id === currentConversationId);
+    });
+  }
+
+  async function loadConversationIntoView(convId) {
+    if (convId === currentConversationId) return;
+    try {
+      const res = await fetch(`/api/conversations/${convId}`);
+      if (!res.ok) return;
+      const conv = await res.json();
+
+      messagesEl.innerHTML = "";
+      currentConversationId = conv.id;
+      currentTitle = conv.title;
+      activateChatView();
+      renderSidebarActive();
+
+      let precedingUser = null;
+      conv.messages.forEach((m) => {
+        if (m.role === "user") {
+          const { bubble } = buildMessageGroup("user");
+          bubble.textContent = m.content;
+          bubble.dataset.raw = m.content;
+          precedingUser = m.content;
+        } else {
+          const { group, bubble } = buildMessageGroup("assistant");
+          if (precedingUser) group.dataset.precedingUser = precedingUser;
+          setAssistantContent(bubble, m.content);
+        }
+      });
+      window.scrollTo({ top: document.body.scrollHeight });
+    } catch (err) {
+      flashStateMessage("Couldn't load that conversation", 2500);
+    }
+  }
+
+  refreshConversationList();
 
   // ---------- quick-action prompts (landing chips + attach menu items) ----------
 
@@ -274,7 +331,7 @@
 
     group.appendChild(actions);
     messagesEl.appendChild(group);
-    messagesEl.scrollIntoView && bubble.scrollIntoView({ block: "end", behavior: "smooth" });
+    bubble.scrollIntoView && bubble.scrollIntoView({ block: "end", behavior: "smooth" });
     window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
     return { group, bubble };
   }
@@ -301,7 +358,6 @@
     activateChatView();
     if (!currentTitle) {
       currentTitle = text.length > 34 ? text.slice(0, 34) + "…" : text;
-      addSidebarEntry(currentTitle);
     }
     lastUserText = text;
 
@@ -323,7 +379,7 @@
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userText }),
+        body: JSON.stringify({ message: userText, conversation_id: currentConversationId }),
       });
 
       if (!res.ok || !res.body) {
@@ -331,6 +387,9 @@
         activeSphere().setState("idle");
         return;
       }
+
+      const returnedId = res.headers.get("X-Conversation-Id");
+      if (returnedId) currentConversationId = returnedId;
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -349,6 +408,7 @@
         window.scrollTo({ top: document.body.scrollHeight, behavior: "auto" });
       }
       setAssistantContent(assistantBubble, full);
+      refreshConversationList();
 
       if (viaVoice) {
         speak(full, () => {
@@ -610,4 +670,107 @@
     micBtn.disabled = true;
     micBtn.title = "Voice input isn't supported in this browser — try Chrome or Edge";
   }
+
+  // ---------- export ----------
+
+  const exportBtn = document.getElementById("exportBtn");
+  const exportMenu = document.getElementById("exportMenu");
+
+  exportBtn.addEventListener("click", () => {
+    if (!currentConversationId) {
+      flashStateMessage("Nothing to export yet", 2000);
+      return;
+    }
+    exportMenu.hidden = !exportMenu.hidden;
+  });
+
+  exportMenu.querySelectorAll(".attach-menu-item[data-format]").forEach((item) => {
+    item.addEventListener("click", () => {
+      if (!currentConversationId) return;
+      const a = document.createElement("a");
+      a.href = `/api/conversations/${currentConversationId}/export?format=${item.dataset.format}`;
+      a.click();
+      exportMenu.hidden = true;
+    });
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!exportMenu.hidden && !exportMenu.contains(e.target) && e.target !== exportBtn) {
+      exportMenu.hidden = true;
+    }
+  });
+
+  // ---------- analytics dashboard ----------
+
+  const analyticsBtn = document.getElementById("analyticsBtn");
+  const analyticsOverlay = document.getElementById("analyticsOverlay");
+  const analyticsClose = document.getElementById("analyticsClose");
+  const analyticsBody = document.getElementById("analyticsBody");
+
+  function renderAnalytics(data) {
+    const toolEntries = Object.entries(data.tool_usage || {});
+    const maxToolCount = Math.max(1, ...toolEntries.map(([, c]) => c));
+
+    const days = data.daily_message_counts || [];
+    const maxDay = Math.max(1, ...days.map((d) => d.count));
+
+    analyticsBody.innerHTML = `
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="stat-value">${data.total_messages}</div>
+          <div class="stat-label">Total messages</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${data.average_latency_ms}ms</div>
+          <div class="stat-label">Average latency</div>
+        </div>
+      </div>
+
+      <div>
+        <p class="ts-muted" style="margin:0 0 8px;">Tool usage</p>
+        ${
+          toolEntries.length
+            ? toolEntries
+                .map(
+                  ([tool, count]) => `
+          <div class="bar-row">
+            <span class="bar-label">${tool.replace(/_/g, " ")}</span>
+            <span class="bar-track"><span class="bar-fill" style="width:${(count / maxToolCount) * 100}%"></span></span>
+            <span class="bar-count">${count}</span>
+          </div>`
+                )
+                .join("")
+            : '<p class="ts-muted">No messages yet.</p>'
+        }
+      </div>
+
+      <div>
+        <p class="ts-muted" style="margin:0 0 8px;">Messages per day (last ${days.length || 0})</p>
+        ${
+          days.length
+            ? `<div class="daily-chart">${days
+                .map((d) => `<div class="daily-bar" style="height:${(d.count / maxDay) * 100}%" title="${d.date}: ${d.count}"></div>`)
+                .join("")}</div>`
+            : '<p class="ts-muted">No data yet.</p>'
+        }
+      </div>
+    `;
+  }
+
+  analyticsBtn.addEventListener("click", async () => {
+    analyticsOverlay.hidden = false;
+    analyticsBody.innerHTML = '<p class="ts-muted">Loading…</p>';
+    try {
+      const res = await fetch("/api/analytics/summary");
+      const data = await res.json();
+      renderAnalytics(data);
+    } catch (err) {
+      analyticsBody.innerHTML = '<p class="ts-muted">Couldn\'t load analytics.</p>';
+    }
+  });
+
+  analyticsClose.addEventListener("click", () => { analyticsOverlay.hidden = true; });
+  analyticsOverlay.addEventListener("click", (e) => {
+    if (e.target === analyticsOverlay) analyticsOverlay.hidden = true;
+  });
 })();

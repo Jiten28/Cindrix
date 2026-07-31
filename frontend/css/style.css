@@ -171,6 +171,11 @@ ul { list-style: none; margin: 0; padding: 0; }
   color: var(--text);
 }
 
+.chat-list li.active {
+  background: rgba(99, 102, 241, 0.16);
+  color: var(--text);
+}
+
 .chat-list-empty {
   color: var(--text-secondary);
   font-size: 13px;
@@ -508,27 +513,6 @@ ul { list-style: none; margin: 0; padding: 0; }
 /* ============================================================
    Rendered markdown content
    ============================================================ */
-.msg pre {
-  background: rgba(0, 0, 0, 0.4);
-  border: 1px solid var(--card-border);
-  border-radius: var(--radius-md);
-  padding: 12px 14px;
-  overflow-x: auto;
-  margin: 8px 0;
-  font-size: 13px;
-}
-
-.msg code {
-  font-family: "SF Mono", "Fira Code", Consolas, monospace;
-}
-
-.msg :not(pre) > code {
-  background: rgba(255, 255, 255, 0.08);
-  padding: 1px 5px;
-  border-radius: 5px;
-  font-size: 0.9em;
-}
-
 .msg strong { font-weight: 700; }
 .msg em { font-style: italic; }
 
@@ -551,6 +535,27 @@ ul { list-style: none; margin: 0; padding: 0; }
   border: none;
   border-top: 1px solid var(--card-border);
   margin: 16px 0;
+}
+
+.msg pre {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  overflow-x: auto;
+  margin: 8px 0;
+  font-size: 13px;
+}
+
+.msg code {
+  font-family: "SF Mono", "Fira Code", Consolas, monospace;
+}
+
+.msg :not(pre) > code {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 1px 5px;
+  border-radius: 5px;
+  font-size: 0.9em;
 }
 
 .msg ul, .msg ol {
@@ -798,6 +803,157 @@ ul { list-style: none; margin: 0; padding: 0; }
   background: rgba(139, 92, 246, 0.18);
   color: var(--glow);
   box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.35);
+}
+
+/* ============================================================
+   Export menu (topbar) — reuses the attach-menu visual language
+   ============================================================ */
+.export-wrap {
+  position: relative;
+}
+
+.export-menu {
+  position: absolute;
+  top: 42px;
+  right: 0;
+  width: 220px;
+  background: rgba(24, 24, 27, 0.95);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  padding: 6px;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  z-index: 10;
+  animation: menu-in 0.15s var(--ease);
+}
+
+/* ============================================================
+   Analytics modal
+   ============================================================ */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.modal-card {
+  width: 100%;
+  max-width: 520px;
+  max-height: 80vh;
+  overflow-y: auto;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--card-border);
+  position: sticky;
+  top: 0;
+  background: var(--card);
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.modal-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.ts-muted {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.stat-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+}
+
+.stat-card .stat-value {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.stat-card .stat-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.bar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.bar-row .bar-label {
+  width: 100px;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  text-transform: capitalize;
+}
+
+.bar-track {
+  flex: 1;
+  height: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--glow));
+  border-radius: var(--radius-full);
+}
+
+.bar-row .bar-count {
+  width: 28px;
+  text-align: right;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.daily-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 60px;
+}
+
+.daily-bar {
+  flex: 1;
+  background: linear-gradient(180deg, var(--glow), var(--accent));
+  border-radius: 3px 3px 0 0;
+  min-height: 2px;
 }
 
 /* ============================================================

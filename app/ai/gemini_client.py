@@ -2,8 +2,9 @@
 
 Rebuilt on the google-genai SDK (the google-generativeai package this
 originally used, and the gemini-1.5-flash model it called, were both fully
-deprecated/shut down by Google — see the 404 error you hit). Function names
-and behavior are unchanged so nothing calling this module needs to change.
+deprecated/shut down by Google — see the 404 error that confirmed this).
+Function names and behavior are unchanged so nothing calling this module
+needs to change.
 """
 
 import json

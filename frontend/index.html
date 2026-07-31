@@ -43,6 +43,7 @@
     </div>
 
     <div class="sidebar-footer">
+      <button class="sidebar-footer-btn" id="analyticsBtn">Analytics</button>
       <button class="sidebar-footer-btn">Settings</button>
       <button class="sidebar-footer-btn">Profile</button>
     </div>
@@ -56,6 +57,13 @@
       <div class="topbar-title">Nimbus AI</div>
       <div class="topbar-controls">
         <select id="voiceSelect" class="voice-select" title="Voice used for spoken replies during voice chat"></select>
+        <div class="export-wrap">
+          <button class="icon-btn" id="exportBtn" aria-label="Export conversation" title="Export conversation">⬇</button>
+          <div class="export-menu" id="exportMenu" hidden>
+            <button type="button" class="attach-menu-item" data-format="md">📝 Export as Markdown</button>
+            <button type="button" class="attach-menu-item" data-format="json">🗂️ Export as JSON</button>
+          </div>
+        </div>
       </div>
       <div class="topbar-status">
         <span class="status-dot" aria-hidden="true"></span>
@@ -125,6 +133,19 @@
   <div class="orb-dock" id="orbDock">
     <canvas id="sphereChat" aria-hidden="true"></canvas>
     <p class="sphere-state" id="sphereStateChat"></p>
+  </div>
+
+  <!-- Analytics dashboard modal -->
+  <div class="modal-overlay" id="analyticsOverlay" hidden>
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>Analytics</h2>
+        <button type="button" class="icon-btn" id="analyticsClose" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body" id="analyticsBody">
+        <p class="ts-muted">Loading…</p>
+      </div>
+    </div>
   </div>
 
 </div>

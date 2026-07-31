@@ -1,0 +1,34 @@
+[
+  {
+    "ts": "2026-07-31T08:30:51.073129+00:00",
+    "event_type": "chat_turn",
+    "conversation_id": "849e91a875c5",
+    "tool_used": "general",
+    "latency_ms": 2993,
+    "message_len": 21
+  },
+  {
+    "ts": "2026-07-31T08:31:04.266410+00:00",
+    "event_type": "chat_turn",
+    "conversation_id": "849e91a875c5",
+    "tool_used": "weather",
+    "latency_ms": 347,
+    "message_len": 51
+  },
+  {
+    "ts": "2026-07-31T08:31:19.321243+00:00",
+    "event_type": "chat_turn",
+    "conversation_id": "849e91a875c5",
+    "tool_used": "weather",
+    "latency_ms": 326,
+    "message_len": 33
+  },
+  {
+    "ts": "2026-07-31T08:32:00.088882+00:00",
+    "event_type": "chat_turn",
+    "conversation_id": "849e91a875c5",
+    "tool_used": "general",
+    "latency_ms": 10424,
+    "message_len": 27
+  }
+]

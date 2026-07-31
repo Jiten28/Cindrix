@@ -1,0 +1,48 @@
+{
+  "id": "849e91a875c5",
+  "title": "Hello, how do you do?",
+  "created_at": "2026-07-31T08:30:48.023317+00:00",
+  "updated_at": "2026-07-31T08:32:00.087104+00:00",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hello, how do you do?",
+      "ts": "2026-07-31T08:30:48.053470+00:00"
+    },
+    {
+      "role": "assistant",
+      "content": "Hello! I'm doing well, thank you. How can I help you today?",
+      "ts": "2026-07-31T08:30:51.072458+00:00"
+    },
+    {
+      "role": "user",
+      "content": "Can you tell me the weather for today in Hyderabad?",
+      "ts": "2026-07-31T08:31:03.916481+00:00"
+    },
+    {
+      "role": "assistant",
+      "content": "The weather in Hyderabad is 28.0°C with overcast clouds (humidity 66%, wind 10.15 m/s).",
+      "ts": "2026-07-31T08:31:04.244000+00:00"
+    },
+    {
+      "role": "user",
+      "content": "And what is the weather in Delhi?",
+      "ts": "2026-07-31T08:31:18.993623+00:00"
+    },
+    {
+      "role": "assistant",
+      "content": "The weather in Delhi is 35.4°C with overcast clouds (humidity 45%, wind 6.22 m/s).",
+      "ts": "2026-07-31T08:31:19.291765+00:00"
+    },
+    {
+      "role": "user",
+      "content": "What all things can you do?",
+      "ts": "2026-07-31T08:31:49.654252+00:00"
+    },
+    {
+      "role": "assistant",
+      "content": "I can help you with a wide variety of tasks, including:\n\n* **Answering questions** (like current weather, general knowledge, or complex topics)\n* **Writing & editing** (emails, essays, creative text, or professional documents)\n* **Coding & tech support** (writing, debugging, and explaining code)\n* **Summarizing** long articles, notes, or documents\n* **Brainstorming & planning** (ideas, itineraries, or schedules)\n* **Math & translations**\n\nIs there something specific you'd like help with right now?",
+      "ts": "2026-07-31T08:32:00.087094+00:00"
+    }
+  ]
+}

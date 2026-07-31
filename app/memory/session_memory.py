@@ -1,7 +1,8 @@
-"""Session memory — JSON-based for now (matches gemini_retrieval.py's
-conv_history.json approach). Architecture.md's SQLite conversations/messages
-tables are the Phase 1→2 upgrade path; this keeps the interface stable so
-swapping the storage backend later doesn't touch app/agents/router.py.
+"""Session memory — JSON-based, single shared history file.
+
+SUPERSEDED by conversation_store.py (Phase 3) — this file is kept only as a
+reference for what Phase 1/2 looked like before real multi-conversation
+storage existed. No route imports this anymore. See Memory.md.
 """
 
 import json

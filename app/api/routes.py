@@ -1,18 +1,34 @@
-"""Chat + upload API. File upload (Phase 2) adds /api/upload,
-/api/attachment, and /api/attachment (DELETE) alongside the Phase 1 chat
-endpoints."""
+"""Chat + upload + conversations + analytics API.
 
+Phase 3 changes: /api/chat now takes a conversation_id (returned via the
+X-Conversation-Id response header, since the response body itself is a
+streaming plain-text reply and can't also carry JSON metadata inline) instead
+of silently using one shared history file. New endpoints: /api/conversations
+(list/create/get/delete), /api/conversations/<id>/export, and
+/api/analytics/summary.
+"""
+
+import io
+import json
 import os
+import time
 import uuid
 
-from flask import Blueprint, Response, jsonify, request, stream_with_context
+from flask import Blueprint, Response, jsonify, request, send_file, stream_with_context
 from werkzeug.utils import secure_filename
 
-from app.agents.router import stream_route_query
+from app.agents.router import detect_tool, stream_route_query
 from app.ai.embeddings import embed_texts
+from app.analytics import events
 from app.config import settings
 from app.memory.attachment_store import clear_active, get_active, set_active
-from app.memory.session_memory import append_turn, load_history
+from app.memory.conversation_store import (
+    append_message,
+    create_conversation,
+    delete_conversation,
+    list_conversations,
+    load_conversation,
+)
 from app.tools.documents import SUPPORTED_EXTENSIONS, chunk_text, extract_text
 
 bp = Blueprint("api", __name__, url_prefix="/api")
@@ -25,25 +41,88 @@ _IMAGE_MIME = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
 def chat():
     data = request.get_json(silent=True) or {}
     user_input = (data.get("message") or "").strip()
+    conversation_id = data.get("conversation_id")
     if not user_input:
         return jsonify({"error": "message is required"}), 400
 
-    history = load_history()
-    append_turn(history, "user", user_input)
+    if not conversation_id or not load_conversation(conversation_id):
+        conv = create_conversation()
+        conversation_id = conv["id"]
+
+    append_message(conversation_id, "user", user_input)
+    attachment = get_active()
+    tool_used = detect_tool(user_input, attachment)
+    start_time = time.time()
 
     def generate():
         full_reply = []
-        for chunk in stream_route_query(user_input, history):
+        for chunk in stream_route_query(user_input, conversation_id):
             full_reply.append(chunk)
             yield chunk
-        append_turn(history, "assistant", "".join(full_reply))
+        reply_text = "".join(full_reply)
+        append_message(conversation_id, "assistant", reply_text)
+        latency_ms = int((time.time() - start_time) * 1000)
+        events.log_chat_turn(conversation_id, tool_used, latency_ms, len(user_input))
 
-    return Response(stream_with_context(generate()), mimetype="text/plain")
+    resp = Response(stream_with_context(generate()), mimetype="text/plain")
+    resp.headers["X-Conversation-Id"] = conversation_id
+    return resp
 
 
-@bp.route("/history", methods=["GET"])
-def history():
-    return jsonify(load_history())
+@bp.route("/conversations", methods=["POST"])
+def new_conversation():
+    conv = create_conversation()
+    return jsonify(conv)
+
+
+@bp.route("/conversations", methods=["GET"])
+def get_conversations():
+    return jsonify(list_conversations())
+
+
+@bp.route("/conversations/<conv_id>", methods=["GET"])
+def get_conversation(conv_id):
+    conv = load_conversation(conv_id)
+    if not conv:
+        return jsonify({"error": "conversation not found"}), 404
+    return jsonify(conv)
+
+
+@bp.route("/conversations/<conv_id>", methods=["DELETE"])
+def remove_conversation(conv_id):
+    delete_conversation(conv_id)
+    return jsonify({"deleted": True})
+
+
+@bp.route("/conversations/<conv_id>/export", methods=["GET"])
+def export_conversation(conv_id):
+    conv = load_conversation(conv_id)
+    if not conv:
+        return jsonify({"error": "conversation not found"}), 404
+
+    fmt = request.args.get("format", "md")
+    safe_title = secure_filename(conv["title"])[:40] or "conversation"
+
+    if fmt == "json":
+        buf = io.BytesIO(json.dumps(conv, indent=2, ensure_ascii=False).encode("utf-8"))
+        return send_file(buf, mimetype="application/json", as_attachment=True,
+                          download_name=f"{safe_title}.json")
+
+    lines = [f"# {conv['title']}", ""]
+    for m in conv["messages"]:
+        speaker = "You" if m["role"] == "user" else "Nimbus"
+        lines.append(f"**{speaker}** ({m.get('ts', '')}):")
+        lines.append("")
+        lines.append(m["content"])
+        lines.append("")
+    buf = io.BytesIO("\n".join(lines).encode("utf-8"))
+    return send_file(buf, mimetype="text/markdown", as_attachment=True,
+                      download_name=f"{safe_title}.md")
+
+
+@bp.route("/analytics/summary", methods=["GET"])
+def analytics_summary():
+    return jsonify(events.summary())
 
 
 @bp.route("/upload", methods=["POST"])
@@ -81,7 +160,6 @@ def upload():
         })
         return jsonify({"kind": "image", "filename": filename})
 
-    # document: extract, chunk, embed
     try:
         text = extract_text(filepath)
     except Exception as e:

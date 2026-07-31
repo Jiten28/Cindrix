@@ -1,17 +1,21 @@
 """Query routing — decides whether a message needs a tool (weather/crypto/
-search) or goes straight to Gemini. Ported from handle_query() in
-gemini_retrieval.py; still keyword-based for Phase 1 (Rules.md/Architecture.md
-flag upgrading this to real intent classification as a later-phase task —
-don't jump ahead of it).
+search), an active attachment (RAG/vision), or a plain conversational answer.
+Ported from handle_query() in gemini_retrieval.py; still keyword-based for
+Phase 1 (Rules.md/Architecture.md flag upgrading this to real intent
+classification as a later-phase task — don't jump ahead of it).
+
+Phase 3 adds detect_tool() as a single source of truth for "which path will
+this message take" — used both to actually answer it and to label the
+analytics event in app/api/routes.py, so the two can't drift out of sync.
 """
 
 import re
-from typing import Dict, Generator, List
+from typing import Dict, Generator, List, Optional
 
 from app.ai.embeddings import top_k_chunks
 from app.ai.gemini_client import call_gemini, stream_gemini, stream_gemini_vision
 from app.memory.attachment_store import get_active
-from app.memory.session_memory import recent_context
+from app.memory.conversation_store import recent_context
 from app.tools.crypto import get_crypto_price
 from app.tools.search import google_search
 from app.tools.weather import get_weather
@@ -25,6 +29,27 @@ _IMAGE_RE = re.compile(r"\bimage(?:s)? of\s+(.+)", re.IGNORECASE)
 def _extract_city(text: str, default: str = "your area") -> str:
     match = _WEATHER_RE.search(text)
     return match.group(1).strip() if match else default
+
+
+def detect_tool(user_input: str, attachment: Optional[Dict] = None) -> str:
+    """Pure classification, no side effects — mirrors the checks in
+    route_query()/stream_route_query() exactly, so analytics logging always
+    matches what actually answered the message."""
+    text = user_input.strip()
+    if _WEATHER_RE.search(text):
+        return "weather"
+    if _CRYPTO_RE.search(text):
+        return "crypto"
+    if _IMAGE_RE.search(text):
+        return "image_search"
+    if _SEARCH_RE.search(text):
+        return "web_search"
+    if attachment:
+        if attachment["kind"] == "image":
+            return "image_vision"
+        if attachment["kind"] == "document":
+            return "document_rag"
+    return "general"
 
 
 def route_query(user_input: str, history: List[Dict]) -> str:
@@ -59,7 +84,7 @@ def route_query(user_input: str, history: List[Dict]) -> str:
     return ""  # signals "not a tool query" — caller falls through to Gemini
 
 
-def stream_route_query(user_input: str, history: List[Dict]) -> Generator[str, None, None]:
+def stream_route_query(user_input: str, conversation_id: str) -> Generator[str, None, None]:
     """Streaming entry point used by the /api/chat SSE route. Tool answers are
     yielded as one chunk (they're already complete); Gemini answers stream
     token by token.
@@ -71,7 +96,7 @@ def stream_route_query(user_input: str, history: List[Dict]) -> Generator[str, N
     document attached — but once tool intent is ruled out, the attachment
     gets first shot at answering before falling back to plain chat.
     """
-    tool_answer = route_query(user_input, history)
+    tool_answer = route_query(user_input, [])
     if tool_answer:
         yield tool_answer
         return
@@ -100,7 +125,7 @@ def stream_route_query(user_input: str, history: List[Dict]) -> Generator[str, N
             yield from stream_gemini(prompt)
             return
 
-    context = recent_context(history)
+    context = recent_context(conversation_id)
     prompt = (
         f"You are Nimbus, a helpful, concise AI assistant.\n\n"
         f"Conversation so far:\n{context}\n\n"
