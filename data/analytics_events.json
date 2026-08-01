@@ -38,5 +38,29 @@
     "tool_used": "general",
     "latency_ms": 17873,
     "message_len": 64
+  },
+  {
+    "ts": "2026-07-31T13:40:08.034734+00:00",
+    "event_type": "chat_turn",
+    "conversation_id": "47f0d96d2b95",
+    "tool_used": "weather",
+    "latency_ms": 8032,
+    "message_len": 43
+  },
+  {
+    "ts": "2026-07-31T13:40:25.434974+00:00",
+    "event_type": "chat_turn",
+    "conversation_id": "47f0d96d2b95",
+    "tool_used": "general",
+    "latency_ms": 3280,
+    "message_len": 49
+  },
+  {
+    "ts": "2026-07-31T13:41:11.280397+00:00",
+    "event_type": "chat_turn",
+    "conversation_id": "47f0d96d2b95",
+    "tool_used": "general",
+    "latency_ms": 3194,
+    "message_len": 56
   }
 ]
