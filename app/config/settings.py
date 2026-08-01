@@ -19,6 +19,23 @@ HISTORY_FILE: str = os.getenv("HISTORY_FILE", "data/conv_history.json").strip()
 GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-flash-latest").strip()
 GEMINI_EMBEDDING_MODEL: str = os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-001").strip()
 
+# Model selector (Phase 4) — real, verified-current model names, not
+# fabricated multi-provider options. All Gemini; the "multiple models"
+# requirement is satisfied by letting the user pick which Gemini tier
+# answers, with the architecture (app/ai/gemini_client.py) ready to add a
+# genuinely different provider later without touching callers.
+AVAILABLE_MODELS = [
+    {"id": "gemini-flash-latest", "label": "Gemini Flash (recommended)"},
+    {"id": "gemini-3.6-flash", "label": "Gemini 3.6 Flash"},
+    {"id": "gemini-3.5-flash-lite", "label": "Gemini 3.5 Flash-Lite (fastest)"},
+]
+
+# Session signing key — a random one is generated per-run if not set, which
+# means sessions won't survive a server restart. Fine for local dev; set a
+# real FLASK_SECRET_KEY in .env before deploying anywhere real.
+import secrets as _secrets  # noqa: E402
+SECRET_KEY: str = os.getenv("FLASK_SECRET_KEY", "").strip() or _secrets.token_hex(32)
+
 UPLOAD_DIR: str = os.getenv("UPLOAD_DIR", "data/uploads").strip()
 EMBEDDING_DIR: str = os.getenv("EMBEDDING_DIR", "data/embeddings").strip()
 MAX_UPLOAD_MB: int = int(os.getenv("MAX_UPLOAD_MB", "15"))

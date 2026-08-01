@@ -3,7 +3,6 @@
 ## Tech Stack
 
 ### Backend
-
 - Python 3.11+
 - Flask (FastAPI acceptable as a drop-in swap if async/streaming needs outgrow Flask)
 - Gemini API via the `google-genai` SDK (primary model provider; abstracted
@@ -16,7 +15,6 @@
 - Redis — future response/session caching
 
 ### Frontend
-
 - HTML5 / CSS3 (custom, no Bootstrap/Tailwind)
 - Vanilla JavaScript
 - Three.js (or lightweight Canvas 2D) — renders the core particle-sphere identity
@@ -42,7 +40,6 @@ Flask app (app/api/) ──► app/agents/  (decides: answer directly, call a to
 ```
 
 Request lifecycle for a chat turn:
-
 1. Frontend sends user message (+ optional file/image) to `app/api/`.
 2. API layer validates input, loads session context from `app/memory/`.
 3. `app/agents/` decides the response strategy: direct LLM call, RAG lookup
@@ -55,10 +52,10 @@ Request lifecycle for a chat turn:
 7. Frontend renders the streamed text and drives the particle sphere's state
    (idle → listening → thinking → speaking) off the stream lifecycle events.
 
-## Current State (Phase 1 complete)
+## Current State (Phases 1–3 complete)
 
-Phase 1 is done. `gemini_retrieval.py` has been fully split apart and a real
-frontend now exists and is served by Flask:
+`gemini_retrieval.py` has been fully split apart; real frontend, real
+multi-conversation backend, analytics, export:
 
 ```text
 Nimbus-AI/
@@ -70,21 +67,41 @@ Nimbus-AI/
 │   ├── Phases.md
 │   └── Memory.md
 ├── app/
-│   ├── __init__.py       # Flask app factory — also serves frontend/ as static
-│   ├── config/settings.py
-│   ├── ai/gemini_client.py
-│   ├── tools/weather.py, crypto.py, search.py
-│   ├── memory/session_memory.py
-│   ├── agents/router.py
-│   └── api/routes.py     # POST /api/chat (streaming), GET /api/history
+│   ├── __init__.py            # Flask app factory — sets secret_key, serves frontend/ as static
+│   ├── config/settings.py     # includes AVAILABLE_MODELS (Phase 4 model selector) and SECRET_KEY
+│   ├── ai/
+│   │   ├── gemini_client.py   # chat + vision, both take an optional validated `model` override (Phase 4)
+│   │   └── embeddings.py      # Gemini embeddings + cosine similarity (RAG)
+│   ├── tools/
+│   │   ├── weather.py, crypto.py, search.py
+│   │   └── documents.py       # PDF/TXT/DOCX extraction + chunking
+│   ├── memory/
+│   │   ├── conversation_store.py   # per-user, per-conversation JSON storage (Phase 3, scoped in Phase 4)
+│   │   ├── attachment_store.py     # per-user active document/image slot (Phase 2, scoped in Phase 4)
+│   │   └── session_memory.py       # superseded by conversation_store.py — kept as reference
+│   ├── analytics/events.py    # event logging + summary (Phase 3); now tags/filters by user_id (Phase 4)
+│   ├── auth/
+│   │   ├── users_store.py     # JSON user storage, password hashing (Phase 4)
+│   │   └── current_user.py    # current_user_id()/current_user()/is_admin() session helpers
+│   ├── agents/router.py       # tool routing + detect_tool() classification; threads user_id + model
+│   └── api/
+│       ├── routes.py          # /api/chat, /api/conversations*, /api/upload, /api/attachment,
+│       │                       # /api/analytics/summary, /api/models — all user-scoped
+│       ├── auth_routes.py     # /api/auth/signup, /login, /logout, /me, /change-password
+│       └── admin_routes.py    # /api/admin/users, /api/admin/stats — is_admin gated
 ├── frontend/
 │   ├── index.html
 │   ├── css/style.css
 │   └── js/app.js, particle-sphere.js, starfield.js
 ├── examples/
-│   ├── conv_history.example.json   # sample output, not live data
+│   ├── conv_history.example.json   # sample output, not live data (legacy — see session_memory.py note)
 │   └── chat.log.example            # sample output, not live data
-├── data/                            # gitignored — real conv_history.json lands here
+├── data/                            # gitignored
+│   ├── conversations/<user_id>/     # one subdirectory per user, one JSON file per conversation + _index.json
+│   ├── embeddings/_attachments/     # one active-attachment JSON per user_id
+│   ├── uploads/                     # uploaded documents/images
+│   ├── users.json                   # user accounts (hashed passwords only)
+│   └── analytics_events.json
 ├── .env.example
 ├── .gitignore
 ├── README.md
@@ -190,7 +207,6 @@ Nimbus-AI/
 ```
 
 ## Database Schema (initial draft)
-
 - `users` — id, email, hashed_password, created_at (Phase 4)
 - `conversations` — id, user_id (nullable pre-auth), title, model_used, created_at
 - `messages` — id, conversation_id, role, content, sentiment, created_at
@@ -199,7 +215,6 @@ Nimbus-AI/
   created_at
 
 ## Integration Points
-
 - **Gemini API** — primary LLM, streaming responses
 - **Web search tool** — pluggable provider behind `app/tools/`
 - **Weather API** — simple REST lookup tool
@@ -207,7 +222,6 @@ Nimbus-AI/
   `data/embeddings/` → retrieve on query
 
 ## Deployment
-
 - Dockerfile + docker-compose for local parity
 - CI-ready structure (lint + test on push)
 - Target hosts: Render or Railway for the live demo

@@ -44,8 +44,9 @@
 
     <div class="sidebar-footer">
       <button class="sidebar-footer-btn" id="analyticsBtn">Analytics</button>
-      <button class="sidebar-footer-btn">Settings</button>
-      <button class="sidebar-footer-btn">Profile</button>
+      <button class="sidebar-footer-btn" id="adminBtn" hidden>Admin</button>
+      <button class="sidebar-footer-btn" id="settingsBtn">Settings</button>
+      <button class="sidebar-footer-btn" id="profileBtn">Profile</button>
     </div>
   </aside>
 
@@ -56,6 +57,7 @@
       <button class="icon-btn" id="sidebarToggle" aria-label="Toggle sidebar">☰</button>
       <div class="topbar-title">Nimbus AI</div>
       <div class="topbar-controls">
+        <select id="modelSelect" class="voice-select" title="AI model"></select>
         <select id="voiceSelect" class="voice-select" title="Voice used for spoken replies during voice chat"></select>
         <div class="export-wrap">
           <button class="icon-btn" id="exportBtn" aria-label="Export conversation" title="Export conversation">⬇</button>
@@ -70,6 +72,7 @@
         <span id="modelName">Gemini</span>
       </div>
     </header>
+
 
     <!-- Landing (empty state) — unchanged, exactly as before -->
     <section class="landing" id="landing">
@@ -143,6 +146,85 @@
         <button type="button" class="icon-btn" id="analyticsClose" aria-label="Close">✕</button>
       </div>
       <div class="modal-body" id="analyticsBody">
+        <p class="ts-muted">Loading…</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Auth modal (login / signup) -->
+  <div class="modal-overlay" id="authOverlay" hidden>
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 id="authTitle">Sign in</h2>
+        <button type="button" class="icon-btn" id="authClose" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="auth-tabs">
+          <button type="button" class="auth-tab active" data-tab="login">Sign in</button>
+          <button type="button" class="auth-tab" data-tab="signup">Create account</button>
+        </div>
+
+        <form id="loginForm" class="form">
+          <label class="form-label">Username or email
+            <input type="text" id="loginIdentifier" class="form-input" autocomplete="username" required />
+          </label>
+          <label class="form-label">Password
+            <input type="password" id="loginPassword" class="form-input" autocomplete="current-password" required />
+          </label>
+          <p class="form-error" id="loginError"></p>
+          <button type="submit" class="form-submit">Sign in</button>
+        </form>
+
+        <form id="signupForm" class="form" hidden>
+          <label class="form-label">Username
+            <input type="text" id="signupUsername" class="form-input" autocomplete="username" required />
+          </label>
+          <label class="form-label">Email
+            <input type="email" id="signupEmail" class="form-input" autocomplete="email" required />
+          </label>
+          <label class="form-label">Password
+            <input type="password" id="signupPassword" class="form-input" autocomplete="new-password" required minlength="6" />
+          </label>
+          <p class="ts-muted" style="margin:0;">At least 6 characters.</p>
+          <p class="form-error" id="signupError"></p>
+          <button type="submit" class="form-submit">Create account</button>
+        </form>
+
+        <p class="ts-muted" style="margin-top:4px;">Not logging in still works — you'll just be using a shared guest space instead of your own.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Profile modal -->
+  <div class="modal-overlay" id="profileOverlay" hidden>
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>Profile</h2>
+        <button type="button" class="icon-btn" id="profileClose" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body" id="profileBody"></div>
+    </div>
+  </div>
+
+  <!-- Settings modal -->
+  <div class="modal-overlay" id="settingsOverlay" hidden>
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>Settings</h2>
+        <button type="button" class="icon-btn" id="settingsClose" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body" id="settingsBody"></div>
+    </div>
+  </div>
+
+  <!-- Admin modal -->
+  <div class="modal-overlay" id="adminOverlay" hidden>
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>Admin</h2>
+        <button type="button" class="icon-btn" id="adminClose" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body" id="adminBody">
         <p class="ts-muted">Loading…</p>
       </div>
     </div>

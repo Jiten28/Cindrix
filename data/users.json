@@ -1,0 +1,12 @@
+[
+  {
+    "id": "88ee2fddeaa2",
+    "username": "Jiten Kumar",
+    "email": "try.jiten282003@gmail.com",
+    "password_hash": "scrypt:32768:8:1$eHu9Zqul4ZAr3zPd$8ee4cc8212b1c960c3be29a61e33610b97fce9d835fd73451a58632e859034b368d040bf395ffc72bfac6584bea51aafe60cfd1cc7e57221da0c058b6bb4d417",
+    "display_name": "Jiten Kumar",
+    "default_voice": "",
+    "is_admin": true,
+    "created_at": "2026-08-01T18:33:43.806023+00:00"
+  }
+]

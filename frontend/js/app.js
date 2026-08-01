@@ -28,6 +28,8 @@
 
   let currentTitle = null;
   let currentConversationId = null;
+  let currentModelId = null;
+  let currentUser = null; // null = guest (not logged in)
   let lastUserText = null; // for regenerate
 
   // ---------- tiny markdown renderer ----------
@@ -379,7 +381,11 @@
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userText, conversation_id: currentConversationId }),
+        body: JSON.stringify({
+          message: userText,
+          conversation_id: currentConversationId,
+          model: currentModelId,
+        }),
       });
 
       if (!res.ok || !res.body) {
@@ -782,4 +788,334 @@
   analyticsOverlay.addEventListener("click", (e) => {
     if (e.target === analyticsOverlay) analyticsOverlay.hidden = true;
   });
+
+  // ---------- model selector ----------
+
+  const modelSelect = document.getElementById("modelSelect");
+  const modelNameEl = document.getElementById("modelName");
+
+  async function loadModels() {
+    try {
+      const res = await fetch("/api/models");
+      const models = await res.json();
+      modelSelect.innerHTML = "";
+      models.forEach((m) => {
+        const opt = document.createElement("option");
+        opt.value = m.id;
+        opt.textContent = m.label;
+        modelSelect.appendChild(opt);
+      });
+      if (models.length) {
+        currentModelId = models[0].id;
+        modelNameEl.textContent = models[0].label.replace(" (recommended)", "");
+      }
+    } catch (err) {
+      // best-effort — chat still works, backend just uses its own default
+    }
+  }
+
+  modelSelect.addEventListener("change", () => {
+    currentModelId = modelSelect.value;
+    const label = modelSelect.options[modelSelect.selectedIndex].textContent;
+    modelNameEl.textContent = label.replace(" (recommended)", "");
+  });
+
+  loadModels();
+
+  // ---------- auth (login / signup) ----------
+
+  const authOverlay = document.getElementById("authOverlay");
+  const authClose = document.getElementById("authClose");
+  const authTitle = document.getElementById("authTitle");
+  const loginForm = document.getElementById("loginForm");
+  const signupForm = document.getElementById("signupForm");
+  const loginError = document.getElementById("loginError");
+  const signupError = document.getElementById("signupError");
+
+  function openAuthModal(tab = "login") {
+    authOverlay.hidden = false;
+    setAuthTab(tab);
+  }
+
+  function setAuthTab(tab) {
+    document.querySelectorAll(".auth-tab").forEach((t) => {
+      t.classList.toggle("active", t.dataset.tab === tab);
+    });
+    loginForm.hidden = tab !== "login";
+    signupForm.hidden = tab !== "signup";
+    authTitle.textContent = tab === "login" ? "Sign in" : "Create account";
+    loginError.textContent = "";
+    signupError.textContent = "";
+  }
+
+  document.querySelectorAll(".auth-tab").forEach((tab) => {
+    tab.addEventListener("click", () => setAuthTab(tab.dataset.tab));
+  });
+
+  authClose.addEventListener("click", () => { authOverlay.hidden = true; });
+  authOverlay.addEventListener("click", (e) => {
+    if (e.target === authOverlay) authOverlay.hidden = true;
+  });
+
+  async function afterAuthChange() {
+    await loadCurrentUser();
+    resetToLanding();
+    await refreshConversationList();
+  }
+
+  loginForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    loginError.textContent = "";
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          identifier: document.getElementById("loginIdentifier").value,
+          password: document.getElementById("loginPassword").value,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        loginError.textContent = data.error || "Couldn't sign in.";
+        return;
+      }
+      authOverlay.hidden = true;
+      loginForm.reset();
+      await afterAuthChange();
+    } catch (err) {
+      loginError.textContent = "Couldn't reach the server.";
+    }
+  });
+
+  signupForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    signupError.textContent = "";
+    try {
+      const res = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: document.getElementById("signupUsername").value,
+          email: document.getElementById("signupEmail").value,
+          password: document.getElementById("signupPassword").value,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        signupError.textContent = data.error || "Couldn't create account.";
+        return;
+      }
+      authOverlay.hidden = true;
+      signupForm.reset();
+      await afterAuthChange();
+    } catch (err) {
+      signupError.textContent = "Couldn't reach the server.";
+    }
+  });
+
+  async function loadCurrentUser() {
+    try {
+      const res = await fetch("/api/auth/me");
+      const data = await res.json();
+      currentUser = data.loggedIn ? data : null;
+    } catch (err) {
+      currentUser = null;
+    }
+    document.getElementById("adminBtn").hidden = !(currentUser && currentUser.is_admin);
+  }
+
+  // ---------- profile modal ----------
+
+  const profileBtn = document.getElementById("profileBtn");
+  const profileOverlay = document.getElementById("profileOverlay");
+  const profileClose = document.getElementById("profileClose");
+  const profileBody = document.getElementById("profileBody");
+
+  function renderProfile() {
+    if (!currentUser) {
+      profileBody.innerHTML = `
+        <p class="ts-muted">You're using Nimbus as a guest — sign in to keep your own conversation history, attachments, and settings.</p>
+        <button type="button" class="form-submit" id="profileSignInBtn">Sign in / Create account</button>
+      `;
+      document.getElementById("profileSignInBtn").addEventListener("click", () => {
+        profileOverlay.hidden = true;
+        openAuthModal("login");
+      });
+      return;
+    }
+    const initial = (currentUser.display_name || currentUser.username || "?")[0].toUpperCase();
+    const joined = new Date(currentUser.created_at).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+    profileBody.innerHTML = `
+      <div class="profile-row">
+        <div class="profile-avatar">${initial}</div>
+        <div>
+          <div class="profile-name">${currentUser.display_name || currentUser.username}${currentUser.is_admin ? ' <span class="admin-badge">Admin</span>' : ""}</div>
+          <div class="profile-email">${currentUser.email}</div>
+        </div>
+      </div>
+      <p class="ts-muted" style="margin:0;">Member since ${joined}</p>
+      <div class="form-divider"></div>
+      <button type="button" class="form-submit secondary" id="profileLogoutBtn">Log out</button>
+    `;
+    document.getElementById("profileLogoutBtn").addEventListener("click", async () => {
+      await fetch("/api/auth/logout", { method: "POST" });
+      profileOverlay.hidden = true;
+      await afterAuthChange();
+    });
+  }
+
+  profileBtn.addEventListener("click", () => {
+    renderProfile();
+    profileOverlay.hidden = false;
+  });
+  profileClose.addEventListener("click", () => { profileOverlay.hidden = true; });
+  profileOverlay.addEventListener("click", (e) => {
+    if (e.target === profileOverlay) profileOverlay.hidden = true;
+  });
+
+  // ---------- settings modal ----------
+
+  const settingsBtn = document.getElementById("settingsBtn");
+  const settingsOverlay = document.getElementById("settingsOverlay");
+  const settingsClose = document.getElementById("settingsClose");
+  const settingsBody = document.getElementById("settingsBody");
+
+  function renderSettings() {
+    if (!currentUser) {
+      settingsBody.innerHTML = `
+        <p class="ts-muted">Settings are tied to an account — sign in first.</p>
+        <button type="button" class="form-submit" id="settingsSignInBtn">Sign in / Create account</button>
+      `;
+      document.getElementById("settingsSignInBtn").addEventListener("click", () => {
+        settingsOverlay.hidden = true;
+        openAuthModal("login");
+      });
+      return;
+    }
+
+    settingsBody.innerHTML = `
+      <form class="form" id="profileForm">
+        <label class="form-label">Display name
+          <input type="text" id="displayNameInput" class="form-input" value="${(currentUser.display_name || "").replace(/"/g, "&quot;")}" />
+        </label>
+        <p class="form-success" id="profileFormSuccess"></p>
+        <button type="submit" class="form-submit">Save changes</button>
+      </form>
+
+      <div class="form-divider"></div>
+
+      <form class="form" id="passwordForm">
+        <label class="form-label">Current password
+          <input type="password" id="currentPasswordInput" class="form-input" autocomplete="current-password" required />
+        </label>
+        <label class="form-label">New password
+          <input type="password" id="newPasswordInput" class="form-input" autocomplete="new-password" required minlength="6" />
+        </label>
+        <p class="form-error" id="passwordFormError"></p>
+        <p class="form-success" id="passwordFormSuccess"></p>
+        <button type="submit" class="form-submit secondary">Change password</button>
+      </form>
+    `;
+
+    document.getElementById("profileForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const successEl = document.getElementById("profileFormSuccess");
+      try {
+        const res = await fetch("/api/auth/me", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ display_name: document.getElementById("displayNameInput").value }),
+        });
+        if (res.ok) {
+          currentUser = { ...currentUser, ...(await res.json()) };
+          successEl.textContent = "Saved.";
+          setTimeout(() => { successEl.textContent = ""; }, 2000);
+        }
+      } catch (err) {
+        // best-effort
+      }
+    });
+
+    document.getElementById("passwordForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const errorEl = document.getElementById("passwordFormError");
+      const successEl = document.getElementById("passwordFormSuccess");
+      errorEl.textContent = "";
+      try {
+        const res = await fetch("/api/auth/change-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            current_password: document.getElementById("currentPasswordInput").value,
+            new_password: document.getElementById("newPasswordInput").value,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          errorEl.textContent = data.error || "Couldn't change password.";
+          return;
+        }
+        successEl.textContent = "Password changed.";
+        document.getElementById("passwordForm").reset();
+        setTimeout(() => { successEl.textContent = ""; }, 2000);
+      } catch (err) {
+        errorEl.textContent = "Couldn't reach the server.";
+      }
+    });
+  }
+
+  settingsBtn.addEventListener("click", () => {
+    renderSettings();
+    settingsOverlay.hidden = false;
+  });
+  settingsClose.addEventListener("click", () => { settingsOverlay.hidden = true; });
+  settingsOverlay.addEventListener("click", (e) => {
+    if (e.target === settingsOverlay) settingsOverlay.hidden = true;
+  });
+
+  // ---------- admin panel ----------
+
+  const adminBtn = document.getElementById("adminBtn");
+  const adminOverlay = document.getElementById("adminOverlay");
+  const adminClose = document.getElementById("adminClose");
+  const adminBody = document.getElementById("adminBody");
+
+  adminBtn.addEventListener("click", async () => {
+    adminOverlay.hidden = false;
+    adminBody.innerHTML = '<p class="ts-muted">Loading…</p>';
+    try {
+      const res = await fetch("/api/admin/users");
+      if (!res.ok) {
+        adminBody.innerHTML = '<p class="ts-muted">Admin access required.</p>';
+        return;
+      }
+      const users = await res.json();
+      adminBody.innerHTML = `
+        <table class="admin-table">
+          <thead><tr><th>User</th><th>Email</th><th>Conversations</th><th>Messages</th></tr></thead>
+          <tbody>
+            ${users.map((u) => `
+              <tr>
+                <td>${u.display_name || u.username}${u.is_admin ? ' <span class="admin-badge">Admin</span>' : ""}</td>
+                <td>${u.email}</td>
+                <td>${u.conversation_count}</td>
+                <td>${u.message_count}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      `;
+    } catch (err) {
+      adminBody.innerHTML = '<p class="ts-muted">Couldn\'t load admin data.</p>';
+    }
+  });
+  adminClose.addEventListener("click", () => { adminOverlay.hidden = true; });
+  adminOverlay.addEventListener("click", (e) => {
+    if (e.target === adminOverlay) adminOverlay.hidden = true;
+  });
+
+  // ---------- initial load ----------
+
+  loadCurrentUser();
 })();

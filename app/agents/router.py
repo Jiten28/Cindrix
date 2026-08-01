@@ -4,9 +4,11 @@ Ported from handle_query() in gemini_retrieval.py; still keyword-based for
 Phase 1 (Rules.md/Architecture.md flag upgrading this to real intent
 classification as a later-phase task — don't jump ahead of it).
 
-Phase 3 adds detect_tool() as a single source of truth for "which path will
+Phase 3 added detect_tool() as a single source of truth for "which path will
 this message take" — used both to actually answer it and to label the
-analytics event in app/api/routes.py, so the two can't drift out of sync.
+analytics event. Phase 4 threads user_id through (conversations and
+attachments are now per-user) and an optional model override (model
+selector UI).
 """
 
 import re
@@ -84,7 +86,12 @@ def route_query(user_input: str, history: List[Dict]) -> str:
     return ""  # signals "not a tool query" — caller falls through to Gemini
 
 
-def stream_route_query(user_input: str, conversation_id: str) -> Generator[str, None, None]:
+def stream_route_query(
+    user_input: str,
+    user_id: str,
+    conversation_id: str,
+    model: Optional[str] = None,
+) -> Generator[str, None, None]:
     """Streaming entry point used by the /api/chat SSE route. Tool answers are
     yielded as one chunk (they're already complete); Gemini answers stream
     token by token.
@@ -101,12 +108,12 @@ def stream_route_query(user_input: str, conversation_id: str) -> Generator[str, 
         yield tool_answer
         return
 
-    attachment = get_active()
+    attachment = get_active(user_id)
     if attachment:
         if attachment["kind"] == "image":
             with open(attachment["filepath"], "rb") as f:
                 image_bytes = f.read()
-            yield from stream_gemini_vision(user_input, image_bytes, attachment["mime_type"])
+            yield from stream_gemini_vision(user_input, image_bytes, attachment["mime_type"], model=model)
             return
 
         if attachment["kind"] == "document":
@@ -122,13 +129,13 @@ def stream_route_query(user_input: str, conversation_id: str) -> Generator[str, 
                 f"Document excerpts:\n{context_block}\n\n"
                 f"User question: {user_input}\nNimbus:"
             )
-            yield from stream_gemini(prompt)
+            yield from stream_gemini(prompt, model=model)
             return
 
-    context = recent_context(conversation_id)
+    context = recent_context(user_id, conversation_id)
     prompt = (
         f"You are Nimbus, a helpful, concise AI assistant.\n\n"
         f"Conversation so far:\n{context}\n\n"
         f"User: {user_input}\nNimbus:"
     )
-    yield from stream_gemini(prompt)
+    yield from stream_gemini(prompt, model=model)

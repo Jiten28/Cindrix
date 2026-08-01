@@ -5,6 +5,11 @@ originally used, and the gemini-1.5-flash model it called, were both fully
 deprecated/shut down by Google — see the 404 error that confirmed this).
 Function names and behavior are unchanged so nothing calling this module
 needs to change.
+
+Phase 4: call_gemini/stream_gemini accept an optional model override (for
+the model selector UI) — validated against settings.AVAILABLE_MODELS rather
+than passed straight through, so an unexpected string from the client can't
+reach the API as a model name.
 """
 
 import json
@@ -17,6 +22,13 @@ from google.genai import types
 from app.config import settings
 
 _client: Optional[genai.Client] = None
+_VALID_MODEL_IDS = {m["id"] for m in settings.AVAILABLE_MODELS}
+
+
+def _resolve_model(model: Optional[str]) -> str:
+    if model and model in _VALID_MODEL_IDS:
+        return model
+    return settings.GEMINI_MODEL
 
 
 def _get_client() -> genai.Client:
@@ -26,14 +38,14 @@ def _get_client() -> genai.Client:
     return _client
 
 
-def call_gemini(prompt: str) -> str:
+def call_gemini(prompt: str, model: Optional[str] = None) -> str:
     """Non-streaming call — used by tools that need a single complete answer
     (e.g. the Gemini weather fallback, JSON-mode calls)."""
     if not settings.GOOGLE_API_KEY:
         return "Gemini is not configured (missing GOOGLE_API_KEY)."
     try:
         resp = _get_client().models.generate_content(
-            model=settings.GEMINI_MODEL,
+            model=_resolve_model(model),
             contents=prompt,
         )
         return (resp.text or "").strip() if resp else "No response."
@@ -53,7 +65,7 @@ def call_gemini_json(prompt: str) -> Optional[dict]:
     return None
 
 
-def stream_gemini(prompt: str) -> Generator[str, None, None]:
+def stream_gemini(prompt: str, model: Optional[str] = None) -> Generator[str, None, None]:
     """Streaming call — yields text chunks as Gemini generates them.
     Used by app/api/routes.py for the chat-turn SSE response."""
     if not settings.GOOGLE_API_KEY:
@@ -61,7 +73,7 @@ def stream_gemini(prompt: str) -> Generator[str, None, None]:
         return
     try:
         stream = _get_client().models.generate_content_stream(
-            model=settings.GEMINI_MODEL,
+            model=_resolve_model(model),
             contents=prompt,
         )
         for chunk in stream:
@@ -71,7 +83,7 @@ def stream_gemini(prompt: str) -> Generator[str, None, None]:
         yield f"(Gemini error: {e})"
 
 
-def stream_gemini_vision(prompt: str, image_bytes: bytes, mime_type: str) -> Generator[str, None, None]:
+def stream_gemini_vision(prompt: str, image_bytes: bytes, mime_type: str, model: Optional[str] = None) -> Generator[str, None, None]:
     """Streaming call with an image attached — used for image understanding
     (Phase 2). Also covers the OCR use case: Gemini reads text embedded in
     images natively, so a scanned document just works here without a
@@ -82,7 +94,7 @@ def stream_gemini_vision(prompt: str, image_bytes: bytes, mime_type: str) -> Gen
     try:
         image_part = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
         stream = _get_client().models.generate_content_stream(
-            model=settings.GEMINI_MODEL,
+            model=_resolve_model(model),
             contents=[image_part, prompt],
         )
         for chunk in stream:

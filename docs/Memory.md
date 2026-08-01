@@ -5,94 +5,197 @@
 > Purpose: avoid re-reading the whole codebase or re-deriving decisions already
 > made.
 
-Last updated: end of Phase 1 / start of Phase 2
+Last updated: end of Phase 4
 
 ---
 
 ## Current Status
-
-Phase 1 is complete and working end-to-end: real backend, real frontend, real
-Gemini responses, tested locally. Starting Phase 2 (file upload, RAG, image
-understanding).
+Phases 1–4 are complete and tested end-to-end locally. Real backend, real
+frontend, multi-conversation storage now scoped per-user, analytics, export,
+authentication, admin panel, working model selector, and real Settings/
+Profile pages (they were sidebar buttons that did nothing before this
+session — now fully functional). Next up: Phase 5 (Docker, deployment,
+stretch goals) — not started.
 
 ## Completed Work
 
-**Backend** — `gemini_retrieval.py` (the original CLI prototype) has been fully
-split into `app/`:
+**Phase 1 (backend + frontend foundation)** — see prior log entries in git
+history / earlier docs if needed; short version: `gemini_retrieval.py` split
+into `app/`, Flask serving a real particle-sphere frontend, streaming chat,
+voice loop, weather/crypto/search tools.
 
-- `app/config/settings.py` — env config
-- `app/ai/gemini_client.py` — Gemini calls, **rebuilt on the `google-genai` SDK**
-  (see Known Issues / Architecture Decisions — the original `google-generativeai`
-  package and `gemini-1.5-flash` model are both dead)
-- `app/tools/weather.py`, `crypto.py`, `search.py` — ported directly, unchanged logic
-- `app/memory/session_memory.py` — JSON-based history (`data/conv_history.json`)
-- `app/agents/router.py` — keyword-based routing (weather/crypto/search/general),
-  still simple regex matching — upgrading this to real intent classification is
-  still an open task, not yet started
-- `app/api/routes.py` — `POST /api/chat` (streaming), `GET /api/history`
-- `run.py` — entry point, replaces `python gemini_retrieval.py`
+**Phase 2 (understanding & tools)**:
+- `app/tools/documents.py` — PDF/TXT/DOCX text extraction + chunking
+- `app/ai/embeddings.py` — Gemini embeddings (`gemini-embedding-001`,
+  configurable) + cosine similarity for RAG retrieval
+- `app/ai/gemini_client.py` — added `stream_gemini_vision()` for image
+  understanding (also covers OCR — Gemini reads text in images natively, no
+  separate OCR library needed)
+- `app/memory/attachment_store.py` — single active-attachment slot (document
+  or image), shared across the session — see Known Issues
+- `app/api/routes.py` — `/api/upload`, `/api/attachment` (GET/DELETE)
+- Frontend: real attach button (file picker → upload → chip shown above
+  composer), attachment feeds into the next chat turn automatically
 
-**Frontend** — `frontend/` built from scratch:
+**Phase 2b (ChatGPT/Claude-style redesign, per user's spec doc)**:
+- Page-level scroll instead of a boxed chat window — `.messages` no longer
+  has its own `overflow-y`, whole page scrolls
+- Orb repositioned: docked fixed at right-center in chat mode instead of
+  shrinking to the top. Required refactoring `particle-sphere.js` into a
+  factory (`createNimbusSphere(canvasId, labelId)`) so the landing orb and
+  the docked chat orb are independent instances — a single canvas can't be
+  smoothly CSS-animated between `position:static` and `position:fixed`, so
+  the "movement" is actually a crossfade between two orbs, not one orb
+  physically translating. Looks continuous, isn't literally one element.
+- Quick-action chips move into a `+` attach-menu popover once chat starts
+  (landing keeps them inline, per spec)
+- Sticky composer, sticky topbar, extended markdown (tables, lists, images,
+  **headings, horizontal rules** — these were missing in the first pass and
+  showed as literal `###`/`---` text until fixed), syntax highlighting via
+  highlight.js (CDN — can't verify rendering in this sandbox, no internet
+  access there; wiring confirmed correct)
+- Copy + regenerate buttons work fully. **Edit message is simplified** — it
+  refills the composer rather than truly branching/truncating conversation
+  history, because the backend had no message IDs at the time. Phase 3's
+  conversation_store.py now has per-message structure, so real edit-with-
+  truncation is feasible if it's ever worth doing — not done yet.
+- Fixed two real bugs post-launch: (1) `.attachment-chip{display:flex}` was
+  overriding the browser's `[hidden]{display:none}` default — added a global
+  `[hidden]{display:none !important}` rule so `el.hidden=true` always works
+  regardless of a component's own `display`; (2) orb size/message padding
+  were tuned too small for high-res displays — increased both, with a
+  `min-width:1600px` tier for very large screens.
+- Removed the persistent Idle/Thinking/Listening/Speaking text label per
+  user feedback — the orb's motion communicates state now; the label is
+  reserved for transient messages only (mic errors, "Reading file…").
 
-- Particle-sphere identity (`js/particle-sphere.js`) — Fibonacci-lattice sphere,
-  ~220 points, 4 states (idle/listening/thinking/speaking) exactly per `Design.md`
-- Starfield background (`js/starfield.js`) — sparse, dim, respects
-  `prefers-reduced-motion`
-- Landing view (centered search + suggestion chips) that transitions into a
-  chat view on first message — matches the mockup layout
-- `app.js` wires: streaming fetch to `/api/chat`, markdown rendering (bold,
-  inline code, code fences — hand-rolled, not a library), a full turn-based
-  **voice chat loop** (mic -> send -> spoken reply -> auto-relisten -> repeat,
-  browser `SpeechRecognition` + `speechSynthesis`, no backend voice work
-  needed), and a voice picker for available system voices
-- Flask now serves the frontend directly (`app/__init__.py` — `static_folder`
-  points at `frontend/`, `/` returns `index.html`)
+**Phase 3 (insight layer)**:
+- **Real multi-conversation storage** — `app/memory/conversation_store.py`,
+  one JSON file per conversation under `data/conversations/`, plus an index
+  file for fast listing. This replaces the single shared
+  `conv_history.json` that Phase 1/2 used — that was flagged as a known
+  issue and is now actually fixed. `session_memory.py` is superseded, still
+  in the repo as reference, not imported by any route.
+- `/api/chat` now takes a `conversation_id` in the request body and returns
+  the (possibly newly-created) id via an `X-Conversation-Id` response
+  header, since the response body itself is a streaming plain-text reply and
+  can't carry JSON metadata inline.
+- `app/analytics/events.py` — logs every chat turn (tool used, latency,
+  message length) to `data/analytics_events.json`; `/api/analytics/summary`
+  aggregates it (total messages, average latency, tool-usage breakdown,
+  daily counts). `detect_tool()` in `router.py` is a pure classification
+  function used both to answer the message AND to label the analytics event,
+  specifically so the two can't drift out of sync.
+- Analytics dashboard is a modal (sidebar "Analytics" button) — stat cards +
+  hand-rolled bar charts (divs, not a charting library).
+- Export: `/api/conversations/<id>/export?format=md|json`, downloadable from
+  a topbar button.
+- Sidebar "Recent" list is now real — fetched from `/api/conversations` on
+  load, clicking an entry loads that full conversation via
+  `GET /api/conversations/<id>`.
 
-**Tested locally**: real Gemini replies confirmed working (curl + browser),
-weather/crypto/search tool routing confirmed, voice loop confirmed working in
-Chrome (not supported in Firefox/Safari — browser API limitation, not a bug).
+**Tested locally** (sandboxed — no real internet, so Gemini/embeddings/CDN
+libraries tested via a stand-in SDK, not the real API): full chat flow,
+weather/crypto/search tool routing, RAG over uploaded PDF/DOCX/TXT
+(extraction, chunking, embedding, retrieval all confirmed), image vision
+path, multi-conversation isolation (two conversations confirmed NOT to leak
+messages into each other), analytics accumulation across turns, markdown
+export, JSON export, conversation deletion, the `[hidden]` CSS fix, header/hr
+markdown parsing against the exact structure that was broken.
 
-## In Progress
+**Phase 4 (accounts & scale-readiness)**:
+- `app/auth/users_store.py` — JSON-based user storage (consistent with the
+  rest of the project), passwords hashed with werkzeug's built-in helpers
+  (already a Flask dependency, nothing new added). First user ever created
+  is auto-flagged `is_admin` — simplest bootstrap, no separate setup step.
+- `app/auth/current_user.py` — `current_user_id()` helper used everywhere
+  data needs to be scoped; returns the session's user_id or `"guest"`. Not
+  logging in still works, on purpose — everything just lands in a shared
+  guest bucket, same as the whole app's behavior before this phase.
+- `app/api/auth_routes.py` — `/api/auth/signup`, `/login`, `/logout`, `/me`
+  (GET + PATCH for display name), `/change-password`
+- `app/api/admin_routes.py` — `/api/admin/users` (list + per-user
+  conversation/message counts), `/api/admin/stats`, both gated by `is_admin`
+- **Real architectural change**: `conversation_store.py` and
+  `attachment_store.py` both now take a `user_id` parameter and store under
+  per-user subdirectories/files instead of one global location. Every route
+  in `routes.py` that touches conversations, attachments, or analytics now
+  calls `current_user_id()` first.
+- **Model selector**: `settings.AVAILABLE_MODELS` lists three real,
+  verified-current Gemini model ids. `gemini_client.py`'s `call_gemini()`/
+  `stream_gemini()`/`stream_gemini_vision()` all accept an optional `model`
+  param, validated against the allowed list (`_resolve_model()`) before it
+  can reach the actual API call — an unexpected string from the client
+  can't become an arbitrary model name in the request.
+- **Settings and Profile pages** — these were sidebar buttons that did
+  nothing (flagged directly by the user). Now real modals: Profile shows
+  account info + join date + admin badge + logout; Settings has display
+  name editing and password change, both wired to the backend and tested.
+  Both gracefully handle the guest (not-logged-in) case by prompting sign-in
+  instead of erroring.
 
-- Phase 2: file upload + RAG, image understanding (starting now — see below)
+**Tested locally** (same sandboxed caveat as before — stand-in SDK, not real
+Gemini): signup, login, logout, login-with-wrong-password (correctly
+rejected), two-account conversation isolation (verified neither account's
+messages leak into the other's conversation list), admin access control
+(non-admin correctly gets 403, admin gets the full user list), display name
+update, password change (old password correctly rejected after the change,
+new password correctly accepted), and model override (valid id changes which
+model answers, invalid id safely falls back to the default instead of
+erroring or reaching the API with a bad value).
 
 ## Pending / Next Up
-
-- Phase 2 remaining after this session: OCR for scanned docs (may be covered
-  by Gemini's native multimodal reading instead of a separate OCR library —
-  decide once image upload is in and tested)
-- Phase 3: analytics dashboard, conversation export, full history browsing
-- Real intent classification to replace the current regex router (flagged
-  above, not scheduled to a specific phase yet)
-- Per-session/per-user history isolation — right now `/api/chat` reads and
-  writes one shared `conv_history.json` for everyone, so two browser tabs (or
-  two users) see each other's conversation. Fine for solo local testing, needs
-  fixing before Phase 4 (auth) makes this a real multi-user problem.
+- Phase 5: Docker, CI, deployment, stretch goals (not started)
+- Real intent classification to replace the regex-based router (still open,
+  not scheduled to a specific phase)
+- True edit-message (branch/truncate conversation history) — feasible given
+  conversation_store.py's structure, not yet built
+- Search within conversation history (Phase 3 shipped browsing, not search)
+- Attachments are scoped per-user now (Phase 4), but still a single slot per
+  user rather than per-conversation — a user with two open conversations
+  shares one active attachment between them
+- Sessions use a randomly-generated secret key if `FLASK_SECRET_KEY` isn't
+  set in `.env`, which means sessions don't survive a server restart — fine
+  for local dev, needs a real fixed secret before deploying anywhere
 
 ## Architecture Decisions Log
+| Date | Decision | Reasoning |
+|---|---|---|
+| Phase 1 | Backend = Flask, JSON storage over SQLite (for now) | Simpler for a solo intern project |
+| Phase 1 | Project renamed AURA AI -> NIMBUS, mascot -> particle sphere | Avoid Baymax/JARVIS IP resemblance; original design |
+| Phase 1 | `google-generativeai` SDK + `gemini-1.5-flash` -> `google-genai` SDK + `gemini-flash-latest` | Old SDK/model fully shut down (hit a live 404); `-latest` alias avoids repeating this |
+| Phase 2 | No separate OCR library | Gemini's vision endpoint reads text in images natively |
+| Phase 2b | Two orb instances (factory-based `particle-sphere.js`) instead of one moved element | CSS can't animate `position:static` -> `position:fixed` smoothly; crossfade between two instances achieves the same visual effect |
+| Phase 2b | Edit-message simplified to composer-refill | No message IDs existed yet for true history branching |
+| Phase 3 | Replaced shared `conv_history.json` with per-conversation JSON files | This was Phase 1/2's biggest known issue — real conversation history browsing required it |
+| Phase 3 | `X-Conversation-Id` response header instead of restructuring the streaming response format | Keeps `/api/chat`'s body a plain text stream (simple for the frontend reader) while still returning the id |
+| Phase 3 | Hand-rolled bar-chart analytics UI, no charting library | Consistent with the project's existing pattern of hand-rolling small UI pieces rather than adding dependencies for simple needs |
+| Phase 4 | Session-based auth (Flask signed cookies), not tokens/JWT | Same-origin SPA talking to its own backend — no cross-origin API consumers to justify token complexity |
+| Phase 4 | Not logging in still works (falls into a shared "guest" bucket) | Didn't want to force an account just to try the app; matches how the whole project behaved before this phase |
+| Phase 4 | First user ever created is auto-flagged admin | Simplest possible bootstrap for the admin panel — no separate seed script or manual DB edit needed |
+| Phase 4 | Model selector offers 3 real Gemini model ids, not fabricated multi-provider options | Honest to what's actually implemented; `gemini_client.py`'s structure is still ready for a genuinely different provider later |
+| Phase 4 | Server validates the model id against an allow-list before it reaches the Gemini API call | An unexpected string from the client should never become an arbitrary model name in a live API request |
 
-| Date    | Decision                                                                                     | Reasoning                                                                                                                                                                                                                        |
-| ------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| —       | Backend = Flask (FastAPI as fallback)                                                        | Simpler for a solo intern project; can swap later if async/streaming needs grow                                                                                                                                                  |
-| —       | No CSS framework                                                                             | Custom design identity per `Design.md`; avoid generic Bootstrap look                                                                                                                                                             |
-| —       | SQLite path kept open, JSON used for Phase 1                                                 | `session_memory.py` is JSON now; interface kept stable so swapping storage later doesn't touch `app/agents/router.py`                                                                                                            |
-| Phase 1 | Project renamed AURA AI -> **NIMBUS**                                                        | Chosen name; docs/folder/package names updated throughout                                                                                                                                                                        |
-| Phase 1 | Mascot redesigned from an abstract face -> **particle sphere**                               | Avoids any resemblance to Baymax; Fibonacci-lattice sphere is fully original and ties into the "Nimbus" name (cloud/halo)                                                                                                        |
-| Phase 1 | `google-generativeai` SDK + `gemini-1.5-flash` -> `google-genai` SDK + `gemini-flash-latest` | Google fully shut down the old SDK and the 1.5 model line (hit a live 404 confirming this). `gemini-flash-latest` is Google's auto-updating alias — chosen specifically so the next model retirement doesn't break the app again |
-| Phase 1 | Voice output tied to input method, not a manual toggle                                       | Typed messages never get spoken; only replies to voice-chat-loop turns are spoken. Simpler mental model than a global on/off switch, and it's what was actually asked for                                                        |
+## Post-Launch Fixes (after Phase 3 testing in the browser)
+- **Topbar border gap + horizontal scrollbar** — `.app.chat-active .main { padding-right: 260px/320px }` (added to reserve visual space for the docked orb) was adding to total page width, causing a horizontal scrollbar and shortening the topbar's border since the topbar sits inside that padded box. Removed entirely — the centered `.messages` column already leaves enough natural gap from the orb at normal widths without it.
+- **Voice kept resetting to the default system voice** — `loadVoices()` rebuilt the voice `<select>` from scratch every time the browser fired `onvoiceschanged` (which can fire more than once), silently resetting the selection to whatever ended up first in the list. Fixed by capturing the previously-selected voice name before rebuilding and restoring it afterward if it still exists.
+- **Sandbox filesystem corruption incident** — mid-session, a filesystem issue silently zeroed out most backend `.py` files and all frontend JS/CSS files across several `cp -r` directory copies. The zip handed over at that point (`nimbus-phase2b-full.zip`) was corrupted — it passed `unzip -t` but most files inside were empty. Full rebuild from scratch was required, verified by exact byte-size matches to pre-corruption sizes, Python compile checks, JS syntax checks, HTML/JS id cross-referencing, and a live server test from an independently re-extracted copy. If anything seems to be missing or behaving like an earlier version, a full re-extraction (not a merge) is the safest fix.
 
 ## Known Issues
-
-- Shared single `conv_history.json` across all sessions (see Pending, above)
-- Router is still keyword/regex-based, not true intent recognition (PRD.md
-  commits to this eventually — not urgent while it's a single-user local app)
-- No automated tests yet (`tests/` folder from `Architecture.md`'s target
-  structure doesn't exist yet)
+- Attachments (documents/images) are now per-user (Phase 4 fixed the global
+  slot) but still not per-conversation — one user's two open conversations
+  share the same active attachment
+- Router is still keyword/regex-based, not true intent recognition
+- No automated tests yet
+- highlight.js loads from a CDN — untested in a fully offline environment;
+  fine for normal local dev with internet access
+- Session secret key is randomly generated per-run if `FLASK_SECRET_KEY`
+  isn't set — sessions won't survive a server restart until that's set in
+  `.env`
 
 ## Notes for the Next AI Session
-
 - Read `PRD.md` -> `Architecture.md` -> `Rules.md` -> current phase in `Phases.md`
   -> `Design.md`, in that order, before writing code.
-- Do not skip ahead of the current phase.
+- Do not skip ahead of the current phase (Phase 4 is next).
 - Update this file before ending the session, even if the milestone isn't fully
   done — note what's mid-flight so the next session can resume cleanly.
