@@ -1143,6 +1143,21 @@ ul { list-style: none; margin: 0; padding: 0; }
   padding-right: 40px;
 }
 
+/* Browsers (Edge especially) inject their own built-in "reveal password"
+   icon once a password field has content — it visually collides with our
+   custom toggle button, showing as two overlapping eye icons. Suppress the
+   native ones so only our toggle shows. */
+.password-field .form-input::-ms-reveal,
+.password-field .form-input::-ms-clear {
+  display: none;
+}
+.password-field .form-input::-webkit-textfield-decoration-container {
+  display: none;
+}
+.password-field .form-input::-webkit-credentials-auto-fill-button {
+  display: none !important;
+}
+
 .password-toggle {
   position: absolute;
   right: 4px;

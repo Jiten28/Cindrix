@@ -19,7 +19,7 @@ from werkzeug.utils import secure_filename
 from app.agents.router import detect_tool, stream_route_query
 from app.ai.embeddings import embed_texts
 from app.analytics import events
-from app.auth.current_user import current_user_id
+from app.auth.current_user import current_user, current_user_id
 from app.config import settings
 from app.memory.attachment_store import clear_active, get_active, set_active
 from app.memory.conversation_store import (
@@ -45,6 +45,8 @@ def models():
 @bp.route("/chat", methods=["POST"])
 def chat():
     user_id = current_user_id()
+    user = current_user()
+    user_display_name = user["display_name"] if user else None
     data = request.get_json(silent=True) or {}
     user_input = (data.get("message") or "").strip()
     conversation_id = data.get("conversation_id")
@@ -63,7 +65,9 @@ def chat():
 
     def generate():
         full_reply = []
-        for chunk in stream_route_query(user_input, user_id, conversation_id, model=model):
+        for chunk in stream_route_query(
+            user_input, user_id, conversation_id, model=model, user_display_name=user_display_name
+        ):
             full_reply.append(chunk)
             yield chunk
         reply_text = "".join(full_reply)

@@ -91,6 +91,7 @@ def stream_route_query(
     user_id: str,
     conversation_id: str,
     model: Optional[str] = None,
+    user_display_name: Optional[str] = None,
 ) -> Generator[str, None, None]:
     """Streaming entry point used by the /api/chat SSE route. Tool answers are
     yielded as one chunk (they're already complete); Gemini answers stream
@@ -109,6 +110,8 @@ def stream_route_query(
         return
 
     attachment = get_active(user_id)
+    name_context = f" The user's name is {user_display_name}." if user_display_name else ""
+
     if attachment:
         if attachment["kind"] == "image":
             with open(attachment["filepath"], "rb") as f:
@@ -122,8 +125,8 @@ def stream_route_query(
             )
             context_block = "\n\n---\n\n".join(relevant_chunks)
             prompt = (
-                f"You are Nimbus, a helpful, concise AI assistant. The user has "
-                f"uploaded a document called '{attachment['filename']}'. Use the "
+                f"You are Nimbus, a helpful, concise AI assistant.{name_context} "
+                f"The user has uploaded a document called '{attachment['filename']}'. Use the "
                 f"following excerpts from it to answer their question. If the "
                 f"excerpts don't contain the answer, say so rather than guessing.\n\n"
                 f"Document excerpts:\n{context_block}\n\n"
@@ -134,7 +137,7 @@ def stream_route_query(
 
     context = recent_context(user_id, conversation_id)
     prompt = (
-        f"You are Nimbus, a helpful, concise AI assistant.\n\n"
+        f"You are Nimbus, a helpful, concise AI assistant.{name_context}\n\n"
         f"Conversation so far:\n{context}\n\n"
         f"User: {user_input}\nNimbus:"
     )
