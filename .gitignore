@@ -30,3 +30,4 @@ Thumbs.db
 # Ignore sensitive data
 data\users.json
 data\conv_history.json
+data\analytics_events.json
