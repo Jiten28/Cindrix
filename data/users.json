@@ -8,5 +8,15 @@
     "default_voice": "",
     "is_admin": true,
     "created_at": "2026-08-01T18:33:43.806023+00:00"
+  },
+  {
+    "id": "efa4165b1820",
+    "username": "Test 1",
+    "email": "test1@gmail.com",
+    "password_hash": "scrypt:32768:8:1$caKHNbhAvUZnnJr3$d2a9a60c0f76dbf216c6fda9229e20911f40e9f36909388a707da2d93532abf8fd7f18a9316f1d276d3157e83db42c34efd540d297d82b6d203e6b9aed70ae1e",
+    "display_name": "Test 1",
+    "default_voice": "",
+    "is_admin": false,
+    "created_at": "2026-08-02T08:31:32.234497+00:00"
   }
 ]
