@@ -14,6 +14,25 @@
     return document.getElementById(conversationStarted ? "sphereStateChat" : "sphereState");
   }
 
+  // A plain "click" listener on the overlay closes it even when the click
+  // was actually the *end* of a text-selection drag that started inside the
+  // modal card and drifted onto the backdrop before mouseup — the click
+  // event's target is wherever the mouse released, not where it started.
+  // This tracks mousedown and click separately and only closes when BOTH
+  // happened directly on the backdrop, so selecting text never closes it.
+  function wireOverlayClose(overlay) {
+    let mousedownOnBackdrop = false;
+    overlay.addEventListener("mousedown", (e) => {
+      mousedownOnBackdrop = e.target === overlay;
+    });
+    overlay.addEventListener("click", (e) => {
+      if (mousedownOnBackdrop && e.target === overlay) {
+        overlay.hidden = true;
+      }
+      mousedownOnBackdrop = false;
+    });
+  }
+
   const landing = document.getElementById("landing");
   const chatSection = document.getElementById("chat");
   const messagesEl = document.getElementById("messages");
@@ -785,9 +804,7 @@
   });
 
   analyticsClose.addEventListener("click", () => { analyticsOverlay.hidden = true; });
-  analyticsOverlay.addEventListener("click", (e) => {
-    if (e.target === analyticsOverlay) analyticsOverlay.hidden = true;
-  });
+  wireOverlayClose(analyticsOverlay);
 
   // ---------- model selector ----------
 
@@ -853,9 +870,7 @@
   });
 
   authClose.addEventListener("click", () => { authOverlay.hidden = true; });
-  authOverlay.addEventListener("click", (e) => {
-    if (e.target === authOverlay) authOverlay.hidden = true;
-  });
+  wireOverlayClose(authOverlay);
 
   async function afterAuthChange() {
     await loadCurrentUser();
@@ -970,9 +985,7 @@
     profileOverlay.hidden = false;
   });
   profileClose.addEventListener("click", () => { profileOverlay.hidden = true; });
-  profileOverlay.addEventListener("click", (e) => {
-    if (e.target === profileOverlay) profileOverlay.hidden = true;
-  });
+  wireOverlayClose(profileOverlay);
 
   // ---------- settings modal ----------
 
@@ -1007,11 +1020,24 @@
 
       <form class="form" id="passwordForm">
         <label class="form-label">Current password
-          <input type="password" id="currentPasswordInput" class="form-input" autocomplete="current-password" required />
+          <div class="password-field">
+            <input type="password" id="currentPasswordInput" class="form-input" autocomplete="current-password" required />
+            <button type="button" class="password-toggle" data-target="currentPasswordInput" aria-label="Show password">👁</button>
+          </div>
         </label>
         <label class="form-label">New password
-          <input type="password" id="newPasswordInput" class="form-input" autocomplete="new-password" required minlength="6" />
+          <div class="password-field">
+            <input type="password" id="newPasswordInput" class="form-input" autocomplete="new-password" required minlength="8" />
+            <button type="button" class="password-toggle" data-target="newPasswordInput" aria-label="Show password">👁</button>
+          </div>
         </label>
+        <ul class="password-requirements" id="newPasswordReqs">
+          <li data-rule="length">At least 8 characters</li>
+          <li data-rule="lower">One lowercase letter</li>
+          <li data-rule="upper">One uppercase letter</li>
+          <li data-rule="digit">One number</li>
+          <li data-rule="special">One special character</li>
+        </ul>
         <p class="form-error" id="passwordFormError"></p>
         <p class="form-success" id="passwordFormSuccess"></p>
         <button type="submit" class="form-submit secondary">Change password</button>
@@ -1070,9 +1096,7 @@
     settingsOverlay.hidden = false;
   });
   settingsClose.addEventListener("click", () => { settingsOverlay.hidden = true; });
-  settingsOverlay.addEventListener("click", (e) => {
-    if (e.target === settingsOverlay) settingsOverlay.hidden = true;
-  });
+  wireOverlayClose(settingsOverlay);
 
   // ---------- admin panel ----------
 
@@ -1111,11 +1135,50 @@
     }
   });
   adminClose.addEventListener("click", () => { adminOverlay.hidden = true; });
-  adminOverlay.addEventListener("click", (e) => {
-    if (e.target === adminOverlay) adminOverlay.hidden = true;
-  });
+  wireOverlayClose(adminOverlay);
 
   // ---------- initial load ----------
+
+  // ---------- password show/hide toggle + live requirements checklist ----------
+  // Delegated on document (not the individual buttons) because the Settings
+  // modal's password fields are created dynamically via innerHTML — a
+  // direct listener wouldn't exist yet at page-load time.
+
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest(".password-toggle");
+    if (!btn) return;
+    const input = document.getElementById(btn.dataset.target);
+    if (!input) return;
+    const showing = input.type === "text";
+    input.type = showing ? "password" : "text";
+    btn.textContent = showing ? "👁" : "🙈";
+    btn.setAttribute("aria-label", showing ? "Show password" : "Hide password");
+  });
+
+  const PASSWORD_RULES = {
+    length: (p) => p.length >= 8,
+    lower: (p) => /[a-z]/.test(p),
+    upper: (p) => /[A-Z]/.test(p),
+    digit: (p) => /\d/.test(p),
+    special: (p) => /[^a-zA-Z0-9]/.test(p),
+  };
+
+  function updatePasswordChecklist(password, listEl) {
+    if (!listEl) return;
+    listEl.querySelectorAll("li[data-rule]").forEach((li) => {
+      const rule = PASSWORD_RULES[li.dataset.rule];
+      li.classList.toggle("met", rule ? rule(password) : false);
+    });
+  }
+
+  document.addEventListener("input", (e) => {
+    if (e.target.id === "signupPassword") {
+      updatePasswordChecklist(e.target.value, document.getElementById("signupPasswordReqs"));
+    }
+    if (e.target.id === "newPasswordInput") {
+      updatePasswordChecklist(e.target.value, document.getElementById("newPasswordReqs"));
+    }
+  });
 
   loadCurrentUser();
 })();

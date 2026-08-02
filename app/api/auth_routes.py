@@ -11,6 +11,7 @@ from app.auth.users_store import (
     create_user,
     get_user,
     update_user,
+    validate_password_strength,
 )
 
 bp = Blueprint("auth", __name__, url_prefix="/api/auth")
@@ -25,8 +26,10 @@ def signup():
 
     if not username or not email or not password:
         return jsonify({"error": "username, email, and password are required"}), 400
-    if len(password) < 6:
-        return jsonify({"error": "password must be at least 6 characters"}), 400
+
+    weakness = validate_password_strength(password)
+    if weakness:
+        return jsonify({"error": weakness}), 400
 
     try:
         user = create_user(username, email, password)
@@ -89,10 +92,9 @@ def change_password_route():
     data = request.get_json(silent=True) or {}
     current_password = data.get("current_password") or ""
     new_password = data.get("new_password") or ""
-    if len(new_password) < 6:
-        return jsonify({"error": "new password must be at least 6 characters"}), 400
 
-    ok = change_password(user_id, current_password, new_password)
-    if not ok:
-        return jsonify({"error": "current password is incorrect"}), 401
+    error = change_password(user_id, current_password, new_password)
+    if error:
+        status = 401 if "incorrect" in error.lower() else 400
+        return jsonify({"error": error}), status
     return jsonify({"changed": True})

@@ -1129,3 +1129,68 @@ ul { list-style: none; margin: 0; padding: 0; }
   font-size: 11px;
   font-weight: 600;
 }
+
+/* ============================================================
+   Password field (show/hide toggle) + requirements checklist
+   ============================================================ */
+.password-field {
+  position: relative;
+  display: flex;
+}
+
+.password-field .form-input {
+  flex: 1;
+  padding-right: 40px;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  transition: background 0.15s var(--ease);
+}
+
+.password-toggle:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.password-requirements {
+  list-style: none;
+  margin: -6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.password-requirements li {
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding-left: 18px;
+  position: relative;
+}
+
+.password-requirements li::before {
+  content: "○";
+  position: absolute;
+  left: 0;
+  font-size: 10px;
+  top: 1px;
+}
+
+.password-requirements li.met {
+  color: #4ADE80;
+}
+
+.password-requirements li.met::before {
+  content: "●";
+}

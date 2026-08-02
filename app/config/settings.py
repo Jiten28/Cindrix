@@ -30,6 +30,15 @@ AVAILABLE_MODELS = [
     {"id": "gemini-3.5-flash-lite", "label": "Gemini 3.5 Flash-Lite (fastest)"},
 ]
 
+# Emails that are always treated as admin, regardless of signup order —
+# separate from the "first user is admin" bootstrap so a specific known
+# account can be guaranteed admin without depending on who signs up first.
+# Comma-separated in .env; not hardcoded here on purpose (this becomes a
+# public repo — real emails shouldn't sit in committed source).
+ADMIN_EMAILS = {
+    e.strip().lower() for e in os.getenv("ADMIN_EMAILS", "").split(",") if e.strip()
+}
+
 # Session signing key — a random one is generated per-run if not set, which
 # means sessions won't survive a server restart. Fine for local dev; set a
 # real FLASK_SECRET_KEY in .env before deploying anywhere real.

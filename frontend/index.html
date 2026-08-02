@@ -4,6 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Nimbus AI</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg" />
 <link rel="stylesheet" href="css/style.css" />
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css" />
 </head>
@@ -169,7 +170,10 @@
             <input type="text" id="loginIdentifier" class="form-input" autocomplete="username" required />
           </label>
           <label class="form-label">Password
-            <input type="password" id="loginPassword" class="form-input" autocomplete="current-password" required />
+            <div class="password-field">
+              <input type="password" id="loginPassword" class="form-input" autocomplete="current-password" required />
+              <button type="button" class="password-toggle" data-target="loginPassword" aria-label="Show password">👁</button>
+            </div>
           </label>
           <p class="form-error" id="loginError"></p>
           <button type="submit" class="form-submit">Sign in</button>
@@ -183,9 +187,18 @@
             <input type="email" id="signupEmail" class="form-input" autocomplete="email" required />
           </label>
           <label class="form-label">Password
-            <input type="password" id="signupPassword" class="form-input" autocomplete="new-password" required minlength="6" />
+            <div class="password-field">
+              <input type="password" id="signupPassword" class="form-input" autocomplete="new-password" required minlength="8" />
+              <button type="button" class="password-toggle" data-target="signupPassword" aria-label="Show password">👁</button>
+            </div>
           </label>
-          <p class="ts-muted" style="margin:0;">At least 6 characters.</p>
+          <ul class="password-requirements" id="signupPasswordReqs">
+            <li data-rule="length">At least 8 characters</li>
+            <li data-rule="lower">One lowercase letter</li>
+            <li data-rule="upper">One uppercase letter</li>
+            <li data-rule="digit">One number</li>
+            <li data-rule="special">One special character</li>
+          </ul>
           <p class="form-error" id="signupError"></p>
           <button type="submit" class="form-submit">Create account</button>
         </form>
