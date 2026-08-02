@@ -161,5 +161,32 @@
     "tool_used": "image_vision",
     "latency_ms": 13078,
     "message_len": 25
+  },
+  {
+    "ts": "2026-08-02T09:01:38.610567+00:00",
+    "event_type": "chat_turn",
+    "user_id": "guest",
+    "conversation_id": "ff45f30d8ce7",
+    "tool_used": "general",
+    "latency_ms": 61445,
+    "message_len": 17
+  },
+  {
+    "ts": "2026-08-02T09:02:04.444990+00:00",
+    "event_type": "chat_turn",
+    "user_id": "guest",
+    "conversation_id": "ff45f30d8ce7",
+    "tool_used": "general",
+    "latency_ms": 1042,
+    "message_len": 24
+  },
+  {
+    "ts": "2026-08-02T09:02:21.472860+00:00",
+    "event_type": "chat_turn",
+    "user_id": "guest",
+    "conversation_id": "ff45f30d8ce7",
+    "tool_used": "general",
+    "latency_ms": 1706,
+    "message_len": 17
   }
 ]

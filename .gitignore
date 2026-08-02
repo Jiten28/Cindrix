@@ -28,6 +28,6 @@ Thumbs.db
 .idea/  
 
 # Ignore sensitive data
-data\users.json
-data\conv_history.json
-data\analytics_events.json
+data/users.json
+data/conv_history.json
+data/analytics_events.json

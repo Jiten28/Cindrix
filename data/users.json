@@ -3,20 +3,20 @@
     "id": "88ee2fddeaa2",
     "username": "Jiten Kumar",
     "email": "jiten282003@gmail.com",
-    "password_hash": "scrypt:32768:8:1$eHu9Zqul4ZAr3zPd$8ee4cc8212b1c960c3be29a61e33610b97fce9d835fd73451a58632e859034b368d040bf395ffc72bfac6584bea51aafe60cfd1cc7e57221da0c058b6bb4d417",
+    "password_hash": "scrypt:32768:8:1$ZzPA7QUiKX3ljleF$3c8325f0eccfaa3e8ca46d63b8b746b297dcced359543f2ec160ed304d81aaa346aa82642fe8caa00021c2e49293d22883186f547f7d47b9316dc59b0263c8ee",
     "display_name": "Jiten Kumar",
     "default_voice": "",
     "is_admin": true,
     "created_at": "2026-08-01T18:33:43.806023+00:00"
   },
   {
-    "id": "efa4165b1820",
-    "username": "Test 1",
+    "id": "e487bb813756",
+    "username": "Test1",
     "email": "test1@gmail.com",
-    "password_hash": "scrypt:32768:8:1$caKHNbhAvUZnnJr3$d2a9a60c0f76dbf216c6fda9229e20911f40e9f36909388a707da2d93532abf8fd7f18a9316f1d276d3157e83db42c34efd540d297d82b6d203e6b9aed70ae1e",
-    "display_name": "Test 1",
+    "password_hash": "scrypt:32768:8:1$6sRSQ131VU9wvmBh$72f03b753dad8b9fb5523a888b89a74493edf0a1a9e29315d0495456364605d0b09259fa835b5b99e3b35ab907b5f8b7c176a65e38e4984bf417f6c710e445fd",
+    "display_name": "Test1",
     "default_voice": "",
     "is_admin": false,
-    "created_at": "2026-08-02T08:31:32.234497+00:00"
+    "created_at": "2026-08-02T09:06:53.458815+00:00"
   }
 ]
