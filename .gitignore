@@ -13,11 +13,17 @@ chat.log
 conv_history.json
 *.log
 
-# Future app data (Phase 1+ — uploads, embeddings, cache are all local/regenerable)
+# App data — all local/regenerable, created automatically at runtime
 data/chat_logs/
 data/uploads/
 data/embeddings/
 data/cache/
+data/conversations/
+
+# Sensitive data — never commit these
+data/users.json
+data/conv_history.json
+data/analytics_events.json
 
 # OS
 .DS_Store
@@ -25,9 +31,4 @@ Thumbs.db
 
 # Editors
 .vscode/
-.idea/  
-
-# Ignore sensitive data
-data/users.json
-data/conv_history.json
-data/analytics_events.json
+.idea/
