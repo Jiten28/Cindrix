@@ -26,3 +26,7 @@ Thumbs.db
 # Editors
 .vscode/
 .idea/  
+
+# Ignore sensitive data
+data\users.json
+data\conv_history.json
