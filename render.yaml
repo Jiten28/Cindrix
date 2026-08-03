@@ -1,0 +1,25 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+# Deploy: connect this repo in the Render dashboard, it picks this up
+# automatically. Environment variables marked `sync: false` need to be
+# filled in manually in the Render dashboard after the first deploy — they
+# intentionally aren't stored in this committed file.
+services:
+  - type: web
+    name: nimbus-ai
+    runtime: docker
+    plan: free
+    envVars:
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: FLASK_SECRET_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: OPENWEATHER_API_KEY
+        sync: false
+      - key: ADMIN_EMAILS
+        sync: false
+    disk:
+      name: nimbus-data
+      mountPath: /app/data
+      sizeGB: 1

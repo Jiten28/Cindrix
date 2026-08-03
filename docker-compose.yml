@@ -1,0 +1,16 @@
+# Local dev/test parity with the production container — not required for
+# `python run.py`-style development, just an alternative that matches what
+# actually runs in production.
+services:
+  nimbus:
+    build: .
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    volumes:
+      # Persists conversations/uploads/users across container restarts —
+      # without this, a `docker compose down` wipes everything, since the
+      # container's own filesystem doesn't survive that.
+      - ./data:/app/data
+    restart: unless-stopped

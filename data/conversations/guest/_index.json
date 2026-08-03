@@ -1,5 +1,12 @@
 [
   {
+    "id": "b7475ac36da0",
+    "title": "Hey, how are you doing today?",
+    "created_at": "2026-08-03T09:01:12.525748+00:00",
+    "updated_at": "2026-08-03T09:01:16.957256+00:00",
+    "message_count": 2
+  },
+  {
     "id": "2a4a544e4f71",
     "title": "Tell me about the image.",
     "created_at": "2026-08-02T16:40:36.253914+00:00",
