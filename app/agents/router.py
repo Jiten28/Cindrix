@@ -15,7 +15,7 @@ import re
 from typing import Dict, Generator, List, Optional
 
 from app.ai.embeddings import top_k_chunks
-from app.ai.gemini_client import call_gemini, stream_gemini, stream_gemini_vision
+from app.ai.gemini_client import call_gemini, stream_gemini, stream_gemini_search, stream_gemini_vision
 from app.memory.attachment_store import get_active
 from app.memory.conversation_store import recent_context
 from app.tools.crypto import get_crypto_price
@@ -56,7 +56,10 @@ def detect_tool(user_input: str, attachment: Optional[Dict] = None) -> str:
 
 def route_query(user_input: str, history: List[Dict]) -> str:
     """Non-streaming route — used for tool-backed answers where there's no
-    meaningful token-by-token output (weather/crypto/search results)."""
+    meaningful token-by-token output (weather/crypto/image-search results).
+    General web search is NOT handled here — it needs Gemini's streaming
+    Google Search grounding tool now (see stream_route_query), not the old
+    Custom Search JSON API path."""
     text = user_input.strip()
 
     if _WEATHER_RE.search(text):
@@ -73,17 +76,10 @@ def route_query(user_input: str, history: List[Dict]) -> str:
     if image_match:
         results = google_search(image_match.group(1), search_type="image")
         if not results:
-            return "No image results found (or search isn't configured)."
+            return "No image results found (or image search isn't configured — see .env.example)."
         return "\n".join(f"- {r['title']}: {r['link']}" for r in results)
 
-    search_match = _SEARCH_RE.search(text)
-    if search_match:
-        results = google_search(search_match.group(1))
-        if not results:
-            return "No search results found (or search isn't configured)."
-        return "\n".join(f"- {r['title']}: {r['link']}\n  {r['snippet']}" for r in results)
-
-    return ""  # signals "not a tool query" — caller falls through to Gemini
+    return ""  # signals "not a tool query" — caller falls through to Gemini/search
 
 
 def stream_route_query(
@@ -107,6 +103,11 @@ def stream_route_query(
     tool_answer = route_query(user_input, [])
     if tool_answer:
         yield tool_answer
+        return
+
+    search_match = _SEARCH_RE.search(user_input.strip())
+    if search_match:
+        yield from stream_gemini_search(search_match.group(1), model=model)
         return
 
     attachment = get_active(user_id)

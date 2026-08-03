@@ -83,6 +83,32 @@ def stream_gemini(prompt: str, model: Optional[str] = None) -> Generator[str, No
         yield f"(Gemini error: {e})"
 
 
+def stream_gemini_search(prompt: str, model: Optional[str] = None) -> Generator[str, None, None]:
+    """Streaming call using Gemini's built-in Google Search grounding tool.
+
+    Replaces the old Custom Search JSON API path for general web search —
+    that API closed to new signups in 2025 and fully sunsets January 1,
+    2027 (see Memory.md). This uses the same GOOGLE_API_KEY already
+    configured for chat; no separate Custom Search API / CSE ID needed.
+    """
+    if not settings.GOOGLE_API_KEY:
+        yield "Gemini is not configured (missing GOOGLE_API_KEY)."
+        return
+    try:
+        grounding_tool = types.Tool(google_search=types.GoogleSearch())
+        config = types.GenerateContentConfig(tools=[grounding_tool])
+        stream = _get_client().models.generate_content_stream(
+            model=_resolve_model(model),
+            contents=prompt,
+            config=config,
+        )
+        for chunk in stream:
+            if chunk.text:
+                yield chunk.text
+    except Exception as e:
+        yield f"(Gemini error: {e})"
+
+
 def stream_gemini_vision(prompt: str, image_bytes: bytes, mime_type: str, model: Optional[str] = None) -> Generator[str, None, None]:
     """Streaming call with an image attached — used for image understanding
     (Phase 2). Also covers the OCR use case: Gemini reads text embedded in
