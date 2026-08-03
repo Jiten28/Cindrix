@@ -6,10 +6,12 @@ until the current one's acceptance criteria are met and `Memory.md` is updated.
 ---
 
 ## Phase 1 — Core Chat Experience ✅ COMPLETE
+
 **Goal:** A working chatbot with memory, Gemini responses, voice, and the
 animated face — the minimum "this feels alive" demo.
 
 Tasks:
+
 - [x] Flask app skeleton (`app/api`, `app/config`, `run.py`)
 - [x] Gemini API integration in `app/ai/` with streaming responses (built on
       `google-genai`, not the originally-assumed `google-generativeai` — see
@@ -35,13 +37,16 @@ works fine for single-user local use so far); per-session memory isolation.
 ---
 
 ## Phase 2 — Understanding & Tools (IN PROGRESS)
+
 **Goal:** NIMBUS can see, read, and look things up.
 
 Already done in Phase 1 (moved up):
+
 - [x] ~~Web search tool integration~~
 - [x] ~~Weather lookup tool~~
 
 Remaining tasks:
+
 - [ ] Image upload + vision understanding
 - [ ] File upload: PDF, TXT, DOCX parsing → RAG pipeline (chunk + embed + retrieve)
 - [ ] OCR for scanned documents/images
@@ -50,6 +55,7 @@ Remaining tasks:
       visual for "actively reading a document" is still open)
 
 Acceptance criteria:
+
 - User can upload a PDF and ask questions about its content
 - User can ask a live question ("what's the weather in X") and get a real
   answer — already true since Phase 1
@@ -60,9 +66,11 @@ Acceptance criteria:
 ---
 
 ## Phase 3 — Insight Layer ✅ COMPLETE
+
 **Goal:** Make usage visible and exportable.
 
 Tasks:
+
 - [x] Analytics event logging (`app/analytics/events.py`) — every chat turn
       logs tool used, latency, message length
 - [x] Analytics dashboard: modal in the sidebar (Analytics button) showing
@@ -90,9 +98,11 @@ export works for any conversation.
 ---
 
 ## Phase 4 — Accounts & Scale-readiness ✅ COMPLETE
+
 **Goal:** Multi-user ready, model-flexible.
 
 Tasks:
+
 - [x] Authentication (signup/login/session) — session-based via Flask's
       signed-cookie session, not tokens; simplest fit for a same-origin SPA
 - [x] Per-user conversation history and memory isolation — conversations
@@ -116,6 +126,7 @@ Tasks:
 
 Also built (not originally scoped, but flagged as broken buttons and fixed
 alongside Phase 4 since profile/settings are inherently account features):
+
 - Real Settings page: display name, change password
 - Real Profile page: account info, join date, admin badge, logout
 
@@ -127,15 +138,36 @@ response during testing).
 ---
 
 ## Phase 5 — Stretch Goals
+
 **Goal:** Portfolio polish, only after 1–4 are solid.
 
 Tasks:
-- Docker + docker-compose, CI-ready structure
-- Deployment to Render or Railway
-- Offline mode / plugin architecture (exploratory)
-- Smart recommendations (proactive suggestions based on conversation history)
-- Mobile app (only if time remains — lowest priority)
+
+- [x] Docker + docker-compose, CI-ready structure — `Dockerfile` (gunicorn,
+      not the Flask dev server), `docker-compose.yml` (local parity, data/
+      volume-mounted so it survives restarts), `.dockerignore`,
+      `.github/workflows/ci.yml` (compile check + real pytest suite +
+      frontend JS syntax check on every push/PR)
+- [x] Deployment to Render — `render.yaml` blueprint included. Railway
+      wasn't set up with a config file since it auto-detects the Dockerfile
+      with no extra config needed; the Dockerfile alone should be
+      sufficient there
+- [x] First real automated tests — `tests/test_health.py` (health endpoint,
+      frontend serving, models list, chat input validation). Small, but
+      it's the difference between zero and nonzero — "no automated tests
+      yet" from `Memory.md`'s Known Issues is no longer fully true
+- [ ] Offline mode / plugin architecture — not attempted, genuinely
+      exploratory scope, no clear immediate need
+- [ ] Smart recommendations — not attempted
+- [ ] Mobile app — not attempted, lowest priority per the original plan
 
 Acceptance criteria:
-- App runs via `docker compose up` with no manual setup
-- Live deployed demo URL works end-to-end
+
+- [x] App runs via `docker compose up` — **honest caveat**: this was written
+      and verified by manual reasoning + running the equivalent commands
+      piece by piece, but the actual `docker build`/`docker compose up`
+      commands themselves were never run end-to-end — the sandbox this was
+      built in has no Docker daemon and no internet access to pull the base
+      image. Verify this one yourself before trusting it fully.
+- [ ] Live deployed demo URL — not done; `render.yaml` is ready to go but
+      an actual deployment requires your own Render account and API keys
