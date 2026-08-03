@@ -1180,5 +1180,26 @@
     }
   });
 
+  // ---------- sidebar Explore shortcuts ----------
+  // These used to be static leftover items from the original landing-page
+  // mockup with no behavior behind them. Wired to the real feature each one
+  // names, now that those features exist.
+
+  document.querySelectorAll(".explore-list li[data-action]").forEach((item) => {
+    item.addEventListener("click", () => {
+      const action = item.dataset.action;
+      if (action === "upload") {
+        fileInput.click();
+      } else if (action === "voice") {
+        if (!voiceChatActive) {
+          setVoiceChatUI(true);
+          startListening();
+        }
+      } else if (action === "coding") {
+        fillComposer("Write code for");
+      }
+    });
+  });
+
   loadCurrentUser();
 })();

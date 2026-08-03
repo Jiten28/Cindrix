@@ -19,7 +19,7 @@ from app.ai.gemini_client import call_gemini, stream_gemini, stream_gemini_searc
 from app.memory.attachment_store import get_active
 from app.memory.conversation_store import recent_context
 from app.tools.crypto import get_crypto_price
-from app.tools.search import google_search
+from app.tools.search import image_search
 from app.tools.weather import get_weather
 
 _WEATHER_RE = re.compile(r"\bweather\b.*\bin\s+([a-zA-Z\s]+)", re.IGNORECASE)
@@ -74,7 +74,7 @@ def route_query(user_input: str, history: List[Dict]) -> str:
 
     image_match = _IMAGE_RE.search(text)
     if image_match:
-        results = google_search(image_match.group(1), search_type="image")
+        results = image_search(image_match.group(1))
         if not results:
             return "No image results found (or image search isn't configured — see .env.example)."
         return "\n".join(f"- {r['title']}: {r['link']}" for r in results)

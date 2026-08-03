@@ -11,7 +11,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 GOOGLE_API_KEY: str = os.getenv("GOOGLE_API_KEY", "").strip()
-GOOGLE_CSE_ID: str = os.getenv("GOOGLE_CSE_ID", "").strip()
+GOOGLE_CSE_ID: str = os.getenv("GOOGLE_CSE_ID", "").strip()  # legacy — no longer used, see Memory.md
+TAVILY_API_KEY: str = os.getenv("TAVILY_API_KEY", "").strip()
 GOOGLE_API_LOCATION: str = os.getenv("GOOGLE_API_LOCATION", "us").strip()
 OPENWEATHER_API_KEY: str = os.getenv("OPENWEATHER_API_KEY", "").strip()
 HISTORY_FILE: str = os.getenv("HISTORY_FILE", "data/conv_history.json").strip()
@@ -62,9 +63,9 @@ def warn_if_missing() -> list[str]:
     """
     warnings = []
     if not GOOGLE_API_KEY:
-        warnings.append("GOOGLE_API_KEY not set — Gemini & Custom Search won't work.")
-    if not GOOGLE_CSE_ID:
-        warnings.append("GOOGLE_CSE_ID not set — web/image search disabled.")
+        warnings.append("GOOGLE_API_KEY not set — Gemini, and general web search via Gemini's Google Search grounding, won't work.")
+    if not TAVILY_API_KEY:
+        warnings.append("TAVILY_API_KEY not set — image search ('image of X') disabled; general web search is unaffected (uses Gemini directly).")
     if not OPENWEATHER_API_KEY:
         warnings.append("OPENWEATHER_API_KEY not set — weather will use Gemini (approximate).")
     return warnings
