@@ -275,6 +275,21 @@
         }
       });
       window.scrollTo({ top: document.body.scrollHeight });
+
+      // Each conversation has its own attachment now — show whatever this
+      // one has (or hide the chip if it has none), rather than leaving
+      // whatever chip state was showing from wherever the user was before.
+      try {
+        const attRes = await fetch(`/api/attachment?conversation_id=${convId}`);
+        const att = await attRes.json();
+        if (att.active) {
+          showAttachmentChip(att.kind, att.filename);
+        } else {
+          hideAttachmentChip();
+        }
+      } catch (err) {
+        hideAttachmentChip();
+      }
     } catch (err) {
       flashStateMessage("Couldn't load that conversation", 2500);
     }
@@ -531,6 +546,7 @@
 
     const formData = new FormData();
     formData.append("file", file);
+    if (currentConversationId) formData.append("conversation_id", currentConversationId);
 
     try {
       const res = await fetch("/api/upload", { method: "POST", body: formData });
@@ -554,7 +570,11 @@
 
   attachmentChipRemove.addEventListener("click", async () => {
     try {
-      await fetch("/api/attachment", { method: "DELETE" });
+      await fetch("/api/attachment", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversation_id: currentConversationId }),
+      });
     } catch (err) {
       // best-effort — hide the chip either way, it's just UI state
     }
