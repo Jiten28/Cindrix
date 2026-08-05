@@ -14,7 +14,11 @@ conv_history.json
 *.log
 
 # App data — all local/regenerable, created automatically at runtime
-data
+data/chat_logs/
+data/uploads/
+data/embeddings/
+data/cache/
+data/conversations/
 
 # Sensitive data — never commit these
 data/users.json
