@@ -21,7 +21,7 @@ data/cache/
 data/conversations/
 
 # Sensitive data — never commit these
-data/users.json
+
 data/conv_history.json
 data/analytics_events.json
 
