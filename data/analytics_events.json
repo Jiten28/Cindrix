@@ -295,5 +295,23 @@
     "tool_used": "general",
     "latency_ms": 2928,
     "message_len": 29
+  },
+  {
+    "ts": "2026-08-05T05:17:26.640205+00:00",
+    "event_type": "chat_turn",
+    "user_id": "guest",
+    "conversation_id": "f1be6b26914d",
+    "tool_used": "general",
+    "latency_ms": 2858,
+    "message_len": 13
+  },
+  {
+    "ts": "2026-08-05T05:18:49.394179+00:00",
+    "event_type": "chat_turn",
+    "user_id": "guest",
+    "conversation_id": "f1be6b26914d",
+    "tool_used": "web_search",
+    "latency_ms": 64157,
+    "message_len": 22
   }
 ]
