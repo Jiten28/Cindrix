@@ -212,9 +212,3 @@ on having a real account.
       brief transient messages (mic errors, "Reading file…")
 
 ---
-
-## If something fails
-
-Note which numbered item failed and what you saw vs. expected — that's
-enough for a fast fix. Screenshots help most for anything visual (layout,
-orb, modals).
