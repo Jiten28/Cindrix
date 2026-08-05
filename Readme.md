@@ -98,16 +98,40 @@ pip install -r requirements.txt
 Copy `.env.example` to `.env` and fill in your keys:
 
 ```dotenv
-# Google API Key for both Gemini + Custom Search
+# Google API Key — powers Gemini chat AND general web search (Gemini's
+# built-in Google Search grounding tool, no separate search API needed)
 GOOGLE_API_KEY=
 
-# Google Custom Search Engine ID (from https://programmablesearchengine.google.com/)
+# Legacy — no longer used for search (Google closed Custom Search JSON API
+# to new customers in 2025, shuts it down entirely Jan 1 2027). Safe to
+# leave blank. See docs/Memory.md.
 GOOGLE_CSE_ID=
 
+# Tavily API key — used ONLY for image search ("image of X"). Free tier:
+# 1,000 credits/month, no credit card required. Get one at tavily.com.
+# General web search does NOT need this — only image search does.
+TAVILY_API_KEY=
+
 # Optional: store history file path
-HISTORY_FILE=conv_history.json
+HISTORY_FILE=data/conv_history.json
 
 GOOGLE_API_LOCATION=us
+
+# Optional: real weather data (falls back to Gemini estimate if unset)
+OPENWEATHER_API_KEY=
+
+# Session signing key (Phase 4 — auth). If left blank, a random one is
+# generated each time the server starts, meaning logged-in sessions won't
+# survive a restart. Set a real fixed value before deploying anywhere real —
+# any long random string works, e.g. generate one with:
+#   python -c "import secrets; print(secrets.token_hex(32))"
+FLASK_SECRET_KEY=
+
+# Emails that are always treated as admin, regardless of signup order.
+# Comma-separated if you want more than one. Leave blank to just rely on
+# "first account ever created is admin" instead.
+ADMIN_EMAILS=
+
 ```
 
 ```bash

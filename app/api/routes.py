@@ -1,10 +1,18 @@
 """Chat + upload + conversations + analytics API.
 
-Phase 4: every route that touches conversations, attachments, or analytics
-now scopes by current_user_id() (session-based, falls back to a shared
-'guest' bucket if nobody's logged in — see app/auth/current_user.py). Model
-selector support: /api/chat accepts an optional "model" field, validated
-against settings.AVAILABLE_MODELS before it ever reaches the Gemini call.
+Phase 3/4: /api/chat takes a conversation_id (returned via the
+X-Conversation-Id response header, since the response body itself is a
+streaming plain-text reply and can't also carry JSON metadata inline);
+conversations, attachments, and analytics are all scoped by
+current_user_id().
+
+Post-launch fix: attachments are now scoped per-CONVERSATION, not just
+per-user — a user with two open conversations used to share one attachment
+between them (upload a file in chat A, ask about it in chat B, get
+answers about A's file). Each conversation gets its own attachment slot now.
+Uploads that happen before a conversation exists yet (the landing page, pre-
+first-message) land in a "pending" slot that gets attached to whichever
+conversation the next message actually creates.
 """
 
 import io
@@ -35,6 +43,11 @@ bp = Blueprint("api", __name__, url_prefix="/api")
 
 _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 _IMAGE_MIME = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
+_PENDING = "__pending__"
+
+
+def _attachment_key(user_id: str, conversation_id: str | None) -> str:
+    return f"{user_id}:{conversation_id or _PENDING}"
 
 
 @bp.route("/models", methods=["GET"])
@@ -54,12 +67,21 @@ def chat():
     if not user_input:
         return jsonify({"error": "message is required"}), 400
 
-    if not conversation_id or not load_conversation(user_id, conversation_id):
+    is_new_conversation = not conversation_id or not load_conversation(user_id, conversation_id)
+    if is_new_conversation:
         conv = create_conversation(user_id)
         conversation_id = conv["id"]
 
+        # Carry over any attachment uploaded before this conversation
+        # existed (e.g. from the landing page) into the new conversation's
+        # own slot, then clear the pending one.
+        pending = get_active(_attachment_key(user_id, None))
+        if pending:
+            set_active(_attachment_key(user_id, conversation_id), pending)
+            clear_active(_attachment_key(user_id, None))
+
     append_message(user_id, conversation_id, "user", user_input)
-    attachment = get_active(user_id)
+    attachment = get_active(_attachment_key(user_id, conversation_id))
     tool_used = detect_tool(user_input, attachment)
     start_time = time.time()
 
@@ -101,7 +123,9 @@ def get_conversation(conv_id):
 
 @bp.route("/conversations/<conv_id>", methods=["DELETE"])
 def remove_conversation(conv_id):
-    delete_conversation(current_user_id(), conv_id)
+    user_id = current_user_id()
+    delete_conversation(user_id, conv_id)
+    clear_active(_attachment_key(user_id, conv_id))
     return jsonify({"deleted": True})
 
 
@@ -141,6 +165,9 @@ def analytics_summary():
 @bp.route("/upload", methods=["POST"])
 def upload():
     user_id = current_user_id()
+    conversation_id = request.form.get("conversation_id") or None
+    key = _attachment_key(user_id, conversation_id)
+
     if "file" not in request.files:
         return jsonify({"error": "no file provided"}), 400
 
@@ -166,7 +193,7 @@ def upload():
         return jsonify({"error": f"file too large ({size_mb:.1f}MB, max {settings.MAX_UPLOAD_MB}MB)"}), 400
 
     if ext in _IMAGE_EXTENSIONS:
-        set_active(user_id, {
+        set_active(key, {
             "kind": "image",
             "filename": filename,
             "filepath": filepath,
@@ -184,7 +211,7 @@ def upload():
 
     chunks = chunk_text(text)
     embeddings = embed_texts(chunks)
-    set_active(user_id, {
+    set_active(key, {
         "kind": "document",
         "filename": filename,
         "filepath": filepath,
@@ -197,7 +224,9 @@ def upload():
 
 @bp.route("/attachment", methods=["GET"])
 def attachment():
-    active = get_active(current_user_id())
+    user_id = current_user_id()
+    conversation_id = request.args.get("conversation_id") or None
+    active = get_active(_attachment_key(user_id, conversation_id))
     if not active:
         return jsonify({"active": False})
     return jsonify({
@@ -209,5 +238,8 @@ def attachment():
 
 @bp.route("/attachment", methods=["DELETE"])
 def remove_attachment():
-    clear_active(current_user_id())
+    user_id = current_user_id()
+    data = request.get_json(silent=True) or {}
+    conversation_id = data.get("conversation_id") or request.args.get("conversation_id") or None
+    clear_active(_attachment_key(user_id, conversation_id))
     return jsonify({"cleared": True})

@@ -1,6 +1,10 @@
-"""Tracks the 'active attachment' (uploaded document or image), scoped per
-user (Phase 4) — one slot per user_id instead of one global slot. Not
-logging in still works (falls under the 'guest' bucket).
+"""Tracks the 'active attachment' (uploaded document or image), keyed by an
+opaque string the caller controls. Started as one slot per user_id (Phase
+4), then became one slot per "user_id:conversation_id" (post-launch fix —
+see routes.py's _attachment_key and Memory.md) once per-user scoping turned
+out to still leak an attachment across a user's different conversations.
+This module itself doesn't know or care what the key means — routes.py
+builds it.
 """
 
 import json
@@ -26,18 +30,22 @@ def _ensure_dirs() -> None:
     os.makedirs(_BASE_DIR, exist_ok=True)
 
 
-def _state_file(user_id: str) -> str:
-    return os.path.join(_BASE_DIR, f"{user_id}.json")
+def _state_file(key: str) -> str:
+    # Composite keys look like "user_id:conversation_id" — ":" isn't a
+    # legal character in Windows filenames, so it gets swapped out here
+    # rather than baked into every caller's key-building logic.
+    safe_key = key.replace(":", "__")
+    return os.path.join(_BASE_DIR, f"{safe_key}.json")
 
 
-def set_active(user_id: str, attachment: Attachment) -> None:
+def set_active(key: str, attachment: Attachment) -> None:
     _ensure_dirs()
-    with open(_state_file(user_id), "w", encoding="utf-8") as f:
+    with open(_state_file(key), "w", encoding="utf-8") as f:
         json.dump(attachment, f)
 
 
-def get_active(user_id: str) -> Optional[Attachment]:
-    path = _state_file(user_id)
+def get_active(key: str) -> Optional[Attachment]:
+    path = _state_file(key)
     if not os.path.exists(path):
         return None
     try:
@@ -47,7 +55,7 @@ def get_active(user_id: str) -> Optional[Attachment]:
         return None
 
 
-def clear_active(user_id: str) -> None:
-    path = _state_file(user_id)
+def clear_active(key: str) -> None:
+    path = _state_file(key)
     if os.path.exists(path):
         os.remove(path)

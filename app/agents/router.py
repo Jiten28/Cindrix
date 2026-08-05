@@ -15,11 +15,11 @@ import re
 from typing import Dict, Generator, List, Optional
 
 from app.ai.embeddings import top_k_chunks
-from app.ai.gemini_client import call_gemini, stream_gemini, stream_gemini_search, stream_gemini_vision
+from app.ai.gemini_client import call_gemini, stream_gemini, stream_gemini_vision
 from app.memory.attachment_store import get_active
 from app.memory.conversation_store import recent_context
 from app.tools.crypto import get_crypto_price
-from app.tools.search import image_search
+from app.tools.search import image_search, web_search
 from app.tools.weather import get_weather
 
 _WEATHER_RE = re.compile(r"\bweather\b.*\bin\s+([a-zA-Z\s]+)", re.IGNORECASE)
@@ -57,9 +57,8 @@ def detect_tool(user_input: str, attachment: Optional[Dict] = None) -> str:
 def route_query(user_input: str, history: List[Dict]) -> str:
     """Non-streaming route — used for tool-backed answers where there's no
     meaningful token-by-token output (weather/crypto/image-search results).
-    General web search is NOT handled here — it needs Gemini's streaming
-    Google Search grounding tool now (see stream_route_query), not the old
-    Custom Search JSON API path."""
+    General web search is handled in stream_route_query instead, since its
+    answer is synthesized through Gemini (streamed), not returned raw."""
     text = user_input.strip()
 
     if _WEATHER_RE.search(text):
@@ -105,13 +104,30 @@ def stream_route_query(
         yield tool_answer
         return
 
+    name_context = f" The user's name is {user_display_name}." if user_display_name else ""
+
     search_match = _SEARCH_RE.search(user_input.strip())
     if search_match:
-        yield from stream_gemini_search(search_match.group(1), model=model)
+        query = search_match.group(1)
+        results = web_search(query)
+        if not results:
+            yield "No search results found (or search isn't configured — see .env.example)."
+            return
+        context_block = "\n\n".join(
+            f"{r['title']}\n{r['link']}\n{r['snippet']}" for r in results
+        )
+        prompt = (
+            f"You are Nimbus, a helpful, concise AI assistant.{name_context} "
+            f"Use the following live web search results to answer the user's "
+            f"question. Mention sources naturally where it helps, but keep it "
+            f"conversational rather than a raw list.\n\n"
+            f"Search results:\n{context_block}\n\n"
+            f"User question: {query}\nNimbus:"
+        )
+        yield from stream_gemini(prompt, model=model)
         return
 
-    attachment = get_active(user_id)
-    name_context = f" The user's name is {user_display_name}." if user_display_name else ""
+    attachment = get_active(f"{user_id}:{conversation_id}")
 
     if attachment:
         if attachment["kind"] == "image":
