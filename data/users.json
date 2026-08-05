@@ -8,5 +8,25 @@
     "default_voice": "",
     "is_admin": true,
     "created_at": "2026-08-05T05:48:39.647777+00:00"
+  },
+  {
+    "id": "f8f160702293",
+    "username": "Test 1",
+    "email": "test1@gmail.com",
+    "password_hash": "scrypt:32768:8:1$7uBpN0U8ewtTSUw4$22bc4deb47b73342fb3a6a5298108ae43f9ea56c4c1967d503f3c4a8f2daaf90ab88d1ec1acb49304103c973178d225e120dd08f8fe2d140f9abc2b4142f27d4",
+    "display_name": "Test 1",
+    "default_voice": "",
+    "is_admin": false,
+    "created_at": "2026-08-05T06:41:49.822860+00:00"
+  },
+  {
+    "id": "4f610c804210",
+    "username": "Test 2",
+    "email": "test2@gmail.com",
+    "password_hash": "scrypt:32768:8:1$QHeuayDUiSFUGlXt$aec4bc28c8be92d9ac5acbb739505c233ea0451e1e86ddcaa5000e0796e4f4bc70524fc90ed25784a8f51558ce63e5727c8de94c3717968b57d434e4ef98590f",
+    "display_name": "Test 2",
+    "default_voice": "",
+    "is_admin": false,
+    "created_at": "2026-08-05T06:42:29.277392+00:00"
   }
 ]
