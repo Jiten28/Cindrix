@@ -1,5 +1,5 @@
 """Entry point — replaces `python gemini_retrieval.py` as the way to run
-Nimbus from Phase 1 onward."""
+Cindrix from Phase 1 onward."""
 
 from app import create_app
 from app.config import settings

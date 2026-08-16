@@ -58,7 +58,7 @@ Request lifecycle for a chat turn:
 multi-conversation backend, analytics, export:
 
 ```text
-Nimbus-AI/
+Cindrix/
 ├── docs/
 │   ├── PRD.md
 │   ├── Architecture.md
@@ -124,7 +124,7 @@ in the original plan, and `tests/` still doesn't exist).
 What actually existed in the repo before Phase 1 work began:
 
 ```text
-Nimbus-AI/
+Cindrix/
 ├── docs/
 │   ├── PRD.md
 │   ├── Architecture.md
@@ -154,7 +154,7 @@ it was relocated and formalized.
 ## Target Folder Structure (Phase 1+)
 
 ```text
-Nimbus-AI/
+Cindrix/
 │
 ├── app/
 │   ├── api/          # Flask routes / blueprints, request validation
@@ -220,6 +220,35 @@ Nimbus-AI/
 - **Weather API** — simple REST lookup tool
 - **RAG pipeline** — file upload → parse (PDF/DOCX/TXT) → chunk → embed → store in
   `data/embeddings/` → retrieve on query
+
+## Voice I/O
+
+Both directions of voice run entirely client-side in `frontend/js/app.js`,
+with no dedicated voice backend or added server dependency:
+
+- **Input (STT):** the browser's native `SpeechRecognition` (Web Speech
+  API). On a final transcript, the text is submitted through the exact
+  same path as typed input (`sendMessage()` → `/api/chat` →
+  `stream_route_query()` in `app/agents/router.py`) — there is no separate
+  voice-only query path to keep in sync with the text one.
+- **Output (TTS):** the browser's native `speechSynthesis`
+  (`SpeechSynthesisUtterance`), not a server-side library — a
+  server-rendered-audio approach (e.g. the old CLI prototype's `pyttsx3`)
+  doesn't produce audio in a deployed browser context on Render, and would
+  add an audio-upload/-download round-trip before the RAG pipeline even
+  starts. Doing STT/TTS client-side avoids that round-trip entirely,
+  which matters for the streaming-response latency target in `PRD.md`.
+  Microsoft's "Natural"/"Online" neural voices are preferred when
+  available via `speechSynthesis.getVoices()` (Edge-only, 250+ voices,
+  far more natural than default voices) — Chrome/Firefox/Safari fall back
+  gracefully to whatever default voice they expose; Edge is never
+  hard-required. `pyttsx3` stays in `requirements.txt`/the old CLI
+  prototype for reference only — nothing in the current app routes
+  through it.
+- Sphere state (`listening` / `thinking` / `speaking`) is driven off this
+  same flow — see `Design.md` for the state table and `Memory.md` for a
+  logged fix to a bug where typed (non-voice) replies were briefly and
+  incorrectly entering the `speaking` state during streaming.
 
 ## Deployment
 - Dockerfile + docker-compose for local parity

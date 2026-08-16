@@ -5,9 +5,88 @@
 > Purpose: avoid re-reading the whole codebase or re-deriving decisions already
 > made.
 
-Last updated: end of Phase 4
+Last updated: end of Phase 4 (internship track); Hackathon Phase 1 in progress (see below)
 
 ---
+
+## Hackathon Track — Hackathon Phase 1 (Rename + Core Voice Pipeline)
+
+New, separate from the Phase 1–5 internship roadmap below — logged here
+per this file's own "dated entry per milestone" convention. See
+`Phases.md`'s "Hackathon Track" section for how this relates to the
+internship roadmap; short version: it doesn't replace it, it's a parallel
+submission push.
+
+**Reason:** submitting to the HHGoa "Voice-Enabled RAG" hackathon,
+deadline Aug 22, 2026. Structured as 4 phases; this is Phase 1.
+
+**Done in Hackathon Phase 1:**
+- **Rename NIMBUS → CINDRIX** across every user-facing and developer-facing
+  reference: frontend (`index.html`, `app.js`, `style.css` header comment,
+  `favicon.svg` gradient/background colors), backend (the LLM system
+  prompt in `app/agents/router.py` — this is what the model was literally
+  told to call itself, so it mattered beyond just UI text — plus
+  `app/__init__.py`'s health payload, `app/api/routes.py`'s transcript
+  speaker label, `app/config/settings.py`), deploy config (`render.yaml`,
+  `docker-compose.yml`, `Dockerfile`), `tests/test_health.py` (updated to
+  assert the new title so this doesn't start failing), `run.py`, and
+  `Readme.md`. The GitHub repo itself is deliberately still named
+  `Nimbus-AI` — that's a manual rename step, not part of this pass, so the
+  README's clone instructions still point at that real URL.
+- **Ember Violet palette** applied to `frontend/css/style.css`'s `:root`
+  variables. Audited every existing `--glow` usage first: kept amber glow
+  on the sphere's ambient halo (`.orb-dock::before`) and the mic
+  listening/active states (both genuinely voice/sphere-adjacent), switched
+  everything else that was blending `--glow` in as a generic second color
+  — `.brand-mark`, `.new-chat-btn`, `.composer-send`, `.form-submit`,
+  `.profile-avatar`, the analytics bar-fill/daily-bar gradients — over to
+  solid `--accent`, so amber doesn't bleed into unrelated UI chrome that
+  was never meant to sit next to a violet accent in the first place.
+- **Found and fixed a real gap the palette swap alone would have missed**:
+  `particle-sphere.js`'s canvas rendering never read the CSS variables at
+  all — `ACCENT`/`MUTED` were hardcoded RGB triplets matching the *old*
+  palette. Updated them to the new accent/text values so the sphere itself
+  actually reflects Ember Violet, not just the surrounding chrome.
+- **Voice pipeline — verified, not rebuilt.** Contrary to an earlier
+  assumption that no STT/TTS existed yet, a full voice pipeline was
+  already implemented (`SpeechRecognition` for input, `speechSynthesis`
+  for output, mic button wired to sphere states, error handling for
+  no-mic-permission/unsupported-browser). Verified against four criteria
+  and fixed the two real gaps found:
+  - Same code path as typed input for both directions — already correct.
+  - Sphere state transitions — **had a real bug**: a leftover line in
+    `streamInto()` flipped the sphere into the `speaking` animation the
+    moment the first streamed chunk arrived, including for typed (non-
+    voice) replies, which never play audio. Fixed — the sphere now stays
+    in `thinking` through the whole generation for both input modes, and
+    only enters `speaking` once `speak()` actually starts TTS playback.
+  - Edge "Natural"/"Online" neural voice preference — **was missing**,
+    added (`pickPreferredVoiceName()` in `app.js`): defaults the voice
+    selector to a Natural/Online voice matching the page language when one
+    exists, without overriding a user's manual pick, and falls back
+    silently to the browser default otherwise (Edge never hard-required).
+    Documented in `Readme.md` and `Architecture.md`.
+  - Mic-permission-denied / unsupported-browser handling — already
+    correct (resets sphere to `idle`, shows a visible error message via
+    `flashStateMessage`, disables the mic button with a tooltip when
+    `SpeechRecognition` doesn't exist at all).
+- Updated all six planning docs (this entry; `PRD.md`'s new formal
+  hackathon-requirement section; `Architecture.md`'s new Voice I/O
+  section; `Design.md`'s palette table, header renames, and new
+  sphere-mouse-interactivity-deferred bullet; `Rules.md` and `Phases.md`
+  renames; `Phases.md`'s new Hackathon Track section).
+
+**Pending / not done in Hackathon Phase 1:**
+- Whether to actually tint the sphere amber during the `speaking` state on
+  the canvas itself (vs. just the CSS ambient halo around it) — flagged as
+  an open design decision, not built, since `Design.md`'s existing state
+  table doesn't specify per-state color and this would be a real behavior
+  change beyond a token swap.
+- A pre-existing doc inconsistency was noticed but left untouched (out of
+  scope for this pass): `Phases.md`'s Phase 2 checklist still shows image
+  upload/RAG/OCR as unchecked "remaining tasks," while `Memory.md`'s own
+  Phase 2 log below says all of that shipped. Worth reconciling at some
+  point, but not part of the rename/palette/voice work above.
 
 ## Current Status
 Phases 1–4 are complete and tested end-to-end locally. Real backend, real
@@ -42,7 +121,8 @@ voice loop, weather/crypto/search tools.
   has its own `overflow-y`, whole page scrolls
 - Orb repositioned: docked fixed at right-center in chat mode instead of
   shrinking to the top. Required refactoring `particle-sphere.js` into a
-  factory (`createNimbusSphere(canvasId, labelId)`) so the landing orb and
+  factory (`createNimbusSphere(canvasId, labelId)` — renamed to
+  `createCindrixSphere` in the Cindrix rename, see below) so the landing orb and
   the docked chat orb are independent instances — a single canvas can't be
   smoothly CSS-animated between `position:static` and `position:fixed`, so
   the "movement" is actually a crossfade between two orbs, not one orb

@@ -1,4 +1,4 @@
-# Nimbus AI — production container
+# Cindrix — production container
 #
 # Uses gunicorn instead of `python run.py`'s Flask dev server (that server
 # prints its own "do not use in production" warning — this is the fix).

@@ -1,4 +1,4 @@
-"""Environment-based settings for Nimbus.
+"""Environment-based settings for Cindrix.
 
 Ported from the top of gemini_retrieval.py — all the os.getenv() calls that
 used to sit at module level in the CLI script now live here, so every other

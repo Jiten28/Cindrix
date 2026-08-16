@@ -1,5 +1,5 @@
 /**
- * createNimbusSphere — factory for the particle-sphere identity from
+ * createCindrixSphere — factory for the particle-sphere identity from
  * docs/Design.md. ~220 points on a Fibonacci lattice; state changes radius,
  * rotation speed, and per-particle offset only — the lattice itself never
  * changes.
@@ -10,16 +10,16 @@
  * element can't be smoothly animated between position:static and
  * position:fixed.
  *
- * Usage: const orb = window.createNimbusSphere("sphere", "sphereState");
+ * Usage: const orb = window.createCindrixSphere("sphere", "sphereState");
  * orb.setState("idle" | "listening" | "thinking" | "speaking")
  */
-window.createNimbusSphere = function (canvasId, labelId) {
+window.createCindrixSphere = function (canvasId, labelId) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return { setState() {}, getState() { return "idle"; }, setPaused() {}, resize() {} };
   const ctx = canvas.getContext("2d");
 
-  const ACCENT = [99, 102, 241];   // --accent  #6366F1
-  const MUTED = [161, 161, 170];   // --text-secondary #A1A1AA
+  const ACCENT = [155, 110, 247]; // --accent  #9B6EF7
+  const MUTED = [245, 240, 250];  // --text base color #F5F0FA (--text-secondary's base hue before its .6 alpha)
 
   const N = 220;
   const golden = Math.PI * (3 - Math.sqrt(5));

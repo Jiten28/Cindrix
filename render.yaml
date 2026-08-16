@@ -5,7 +5,7 @@
 # intentionally aren't stored in this committed file.
 services:
   - type: web
-    name: nimbus-ai
+    name: cindrix-ai
     runtime: docker
     plan: free
     envVars:
@@ -20,6 +20,6 @@ services:
       - key: ADMIN_EMAILS
         sync: false
     disk:
-      name: nimbus-data
+      name: cindrix-data
       mountPath: /app/data
       sizeGB: 1

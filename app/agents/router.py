@@ -117,12 +117,12 @@ def stream_route_query(
             f"{r['title']}\n{r['link']}\n{r['snippet']}" for r in results
         )
         prompt = (
-            f"You are Nimbus, a helpful, concise AI assistant.{name_context} "
+            f"You are Cindrix, a helpful, concise AI assistant.{name_context} "
             f"Use the following live web search results to answer the user's "
             f"question. Mention sources naturally where it helps, but keep it "
             f"conversational rather than a raw list.\n\n"
             f"Search results:\n{context_block}\n\n"
-            f"User question: {query}\nNimbus:"
+            f"User question: {query}\nCindrix:"
         )
         yield from stream_gemini(prompt, model=model)
         return
@@ -142,20 +142,20 @@ def stream_route_query(
             )
             context_block = "\n\n---\n\n".join(relevant_chunks)
             prompt = (
-                f"You are Nimbus, a helpful, concise AI assistant.{name_context} "
+                f"You are Cindrix, a helpful, concise AI assistant.{name_context} "
                 f"The user has uploaded a document called '{attachment['filename']}'. Use the "
                 f"following excerpts from it to answer their question. If the "
                 f"excerpts don't contain the answer, say so rather than guessing.\n\n"
                 f"Document excerpts:\n{context_block}\n\n"
-                f"User question: {user_input}\nNimbus:"
+                f"User question: {user_input}\nCindrix:"
             )
             yield from stream_gemini(prompt, model=model)
             return
 
     context = recent_context(user_id, conversation_id)
     prompt = (
-        f"You are Nimbus, a helpful, concise AI assistant.{name_context}\n\n"
+        f"You are Cindrix, a helpful, concise AI assistant.{name_context}\n\n"
         f"Conversation so far:\n{context}\n\n"
-        f"User: {user_input}\nNimbus:"
+        f"User: {user_input}\nCindrix:"
     )
     yield from stream_gemini(prompt, model=model)

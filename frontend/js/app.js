@@ -3,8 +3,8 @@
   // Phase 2) and the docked chat orb (fixed, right-center). See
   // particle-sphere.js's factory refactor comment for why these are separate
   // instances rather than one canvas moved between layouts.
-  const landingSphere = window.createNimbusSphere("sphere", "sphereState");
-  const chatSphere = window.createNimbusSphere("sphereChat", "sphereStateChat");
+  const landingSphere = window.createCindrixSphere("sphere", "sphereState");
+  const chatSphere = window.createCindrixSphere("sphereChat", "sphereStateChat");
 
   let conversationStarted = false;
   function activeSphere() {
@@ -423,7 +423,7 @@
       });
 
       if (!res.ok || !res.body) {
-        setAssistantContent(assistantBubble, "Something went wrong reaching Nimbus. Try again in a moment.");
+        setAssistantContent(assistantBubble, "Something went wrong reaching Cindrix. Try again in a moment.");
         activeSphere().setState("idle");
         return;
       }
@@ -434,15 +434,13 @@
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let full = "";
-      let firstChunk = true;
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        if (firstChunk) {
-          activeSphere().setState(viaVoice ? "thinking" : "speaking");
-          firstChunk = false;
-        }
+        // Stay in "thinking" for the whole generation, regardless of
+        // voice vs. typed input — "speaking" only starts once actual TTS
+        // audio plays, via speak() below, after the full reply is in.
         full += decoder.decode(value, { stream: true });
         setAssistantContent(assistantBubble, full, { pending: true });
         window.scrollTo({ top: document.body.scrollHeight, behavior: "auto" });
@@ -458,7 +456,7 @@
         activeSphere().setState("idle");
       }
     } catch (err) {
-      setAssistantContent(assistantBubble, "Couldn't reach the Nimbus backend — is it running?");
+      setAssistantContent(assistantBubble, "Couldn't reach the Cindrix backend — is it running?");
       activeSphere().setState("idle");
     }
   }
@@ -586,6 +584,24 @@
   const voiceSelect = document.getElementById("voiceSelect");
   let availableVoices = [];
 
+  // Microsoft's Edge-only "Natural"/"Online" neural voices sound far better
+  // than the default robotic ones and are exposed via getVoices() only in
+  // Edge (not reliably in Chrome/Firefox). Preferred when present; if none
+  // are found (e.g. testing in Chrome/Safari/Firefox), this just falls back
+  // to whatever the browser offers — never hard-requires Edge.
+  function pickPreferredVoiceName(voices) {
+    const pageLang = (document.documentElement.lang || navigator.language || "en").slice(0, 2);
+    const neural = voices.filter((v) => /natural|online/i.test(v.name));
+    const neuralInLang = neural.filter((v) => v.lang.startsWith(pageLang));
+    const pick = neuralInLang[0] || neural[0];
+    return pick ? pick.name : null;
+  }
+
+  let userPickedVoice = false;
+  voiceSelect.addEventListener("change", () => {
+    userPickedVoice = true;
+  });
+
   function loadVoices() {
     const previousSelection = voiceSelect.value;
     availableVoices = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
@@ -605,6 +621,12 @@
     const stillExists = Array.from(voiceSelect.options).some((o) => o.value === previousSelection);
     if (previousSelection && stillExists) {
       voiceSelect.value = previousSelection;
+    } else if (!userPickedVoice) {
+      // No prior selection to restore and the user hasn't manually chosen
+      // one yet — default to a Natural/Online neural voice if one exists,
+      // otherwise leave the browser's own default (first option) selected.
+      const preferred = pickPreferredVoiceName(availableVoices);
+      if (preferred) voiceSelect.value = preferred;
     }
   }
   if ("speechSynthesis" in window) {
@@ -651,7 +673,7 @@
   let voiceChatActive = false;
 
   function showMicError(message) {
-    console.error("Nimbus mic error:", message);
+    console.error("Cindrix mic error:", message);
     micBtn.title = `Voice input error: ${message}`;
     flashStateMessage(`Mic error: ${message}`);
   }
@@ -970,7 +992,7 @@
   function renderProfile() {
     if (!currentUser) {
       profileBody.innerHTML = `
-        <p class="ts-muted">You're using Nimbus as a guest — sign in to keep your own conversation history, attachments, and settings.</p>
+        <p class="ts-muted">You're using Cindrix as a guest — sign in to keep your own conversation history, attachments, and settings.</p>
         <button type="button" class="form-submit" id="profileSignInBtn">Sign in / Create account</button>
       `;
       document.getElementById("profileSignInBtn").addEventListener("click", () => {

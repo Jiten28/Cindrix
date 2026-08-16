@@ -26,7 +26,7 @@ def test_index_serves_frontend():
     client = app.test_client()
     resp = client.get("/")
     assert resp.status_code == 200
-    assert b"Nimbus AI" in resp.data
+    assert b"Cindrix" in resp.data
 
 
 def test_models_endpoint_lists_available_models():

@@ -2,7 +2,7 @@
 
 ## Project Name
 
-**NIMBUS** — _A calm, ever-present AI companion_
+**CINDRIX** — _A calm, ever-present AI companion_
 
 ## Context
 
@@ -13,7 +13,7 @@ software engineering roles.
 ## Problem Statement
 
 Most internship chatbot projects are barebones Q&A wrappers around an LLM API with
-no memory, no personality, and no real UX design. NIMBUS aims to feel like a real
+no memory, no personality, and no real UX design. CINDRIX aims to feel like a real
 AI companion: it remembers context across sessions, understands intent and
 sentiment, responds through an expressive animated face, and gives the user a
 professional dashboard to see what it's doing (which model, which tools, memory
@@ -23,7 +23,7 @@ status).
 
 - **Primary (internship reviewers / evaluators):** judging technical depth,
   architecture quality, and UI polish.
-- **Secondary (end users of the deployed demo):** anyone chatting with NIMBUS for
+- **Secondary (end users of the deployed demo):** anyone chatting with CINDRIX for
   general assistance, Q&A, document understanding, and voice interaction.
 
 ## Goals
@@ -105,3 +105,20 @@ status).
 - You (developer / intern)
 - Amdocs internship reviewers/mentors
 - (Optional) end users of the public demo, if deployed
+
+## Hackathon Submission Requirement (formal, added — see Memory.md)
+
+Separate from the internship deliverable above, this build is also being
+submitted to the HHGoa "Voice-Enabled RAG" hackathon (deadline Aug 22,
+2026). That task has one hard, formal requirement this PRD is now
+explicit about rather than leaving implied by the code: **a user must be
+able to ask a question by voice and receive a spoken answer that is
+grounded in retrieved document content (RAG), not a generic response.**
+Concretely: voice input (speech-to-text) → the same retrieval-augmented
+query pipeline used for typed input → voice output (text-to-speech) of
+the grounded answer, end to end, with no separate/lesser voice-only code
+path. The existing "Voice input/output" and "File upload... RAG" bullets
+above already cover the underlying capabilities — this section exists to
+state plainly that their combination (voice question → RAG-grounded
+voice answer) is the literal judged requirement, not just two adjacent
+features.

@@ -2,7 +2,7 @@
 # `python run.py`-style development, just an alternative that matches what
 # actually runs in production.
 services:
-  nimbus:
+  cindrix:
     build: .
     ports:
       - "5000:5000"

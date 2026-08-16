@@ -1,4 +1,4 @@
-# Nimbus AI
+# Cindrix
 
 A calm, ever-present AI companion — conversational chatbot with persistent
 memory, tool use, and a particle-sphere visual identity, built as a final-month
@@ -20,8 +20,22 @@ architecture:
 - Live weather lookup (OpenWeather, with a Gemini fallback when no key is set)
 - Live crypto price lookup (CoinGecko)
 - Web and image search (Google Custom Search API)
-- Text-to-speech responses (`pyttsx3`)
+- Text-to-speech responses (`pyttsx3`, superseded by the browser's own
+  Web Speech API in the current app — see below)
 - Conversation logging
+
+## Voice
+
+Voice input/output runs entirely client-side via the browser's Web Speech
+API (`SpeechRecognition` for input, `speechSynthesis` for output) — no
+audio ever leaves the browser before the transcribed text reaches the same
+`/api/chat` path typed messages use. **Edge gives the best audio quality**:
+it exposes Microsoft's "Natural"/"Online" neural voices through
+`speechSynthesis.getVoices()`, which the voice selector prefers
+automatically when available. Chrome/Firefox/Safari still work, just with
+their default (more robotic) system voices — nothing is required to be
+running Edge. Firefox and Safari don't support `SpeechRecognition` at all
+(a browser limitation), so voice **input** needs Chrome or Edge.
 
 ## What's being added
 
@@ -37,7 +51,7 @@ See `docs/Phases.md` for the full roadmap. Short version:
 
 ## Identity
 
-Nimbus's visual presence is a sphere made of individual particles (Fibonacci
+Cindrix's visual presence is a sphere made of individual particles (Fibonacci
 lattice, no clumping) that changes shape and motion by state:
 
 | State     | Behavior                                                          |
@@ -52,7 +66,7 @@ Full spec in `docs/Design.md`.
 ## Project structure
 
 ```
-Nimbus-AI/
+Cindrix/
 ├── docs/                          # planning docs (see below)
 ├── examples/
 │   ├── conv_history.example.json  # sample output — not live data
@@ -90,8 +104,8 @@ assistant (or future you) can pick up context instantly:
 ## Setup
 
 ```bash
-git clone https://github.com/Jiten28/Nimbus-AI.git
-cd Nimbus-AI
+git clone https://github.com/Jiten28/Cindrix.git
+cd Cindrix
 pip install -r requirements.txt
 ```
 

@@ -1,14 +1,14 @@
 /* ============================================================
-   Nimbus AI — design tokens (from docs/Design.md)
+   Cindrix — design tokens (from docs/Design.md)
    ============================================================ */
 :root {
-  --bg: #09090B;
-  --card: #18181B;
-  --card-border: #232327;
-  --accent: #6366F1;
-  --glow: #8B5CF6;
-  --text: #FFFFFF;
-  --text-secondary: #A1A1AA;
+  --bg: #0A0A0C;
+  --card: #1A1620;
+  --card-border: rgba(255,255,255,.08);
+  --accent: #9B6EF7;
+  --glow: #F0A34E;
+  --text: #F5F0FA;
+  --text-secondary: rgba(245,240,250,.6);
 
   --radius-md: 12px;
   --radius-lg: 20px;
@@ -102,8 +102,11 @@ ul { list-style: none; margin: 0; padding: 0; }
   width: 20px;
   height: 20px;
   border-radius: var(--radius-full);
-  background: radial-gradient(circle at 35% 35%, var(--glow), var(--accent) 70%);
-  box-shadow: 0 0 12px rgba(139, 92, 246, 0.6);
+  /* --glow is reserved for the sphere's speaking state (and its ambient
+     halo below) — general UI chrome like this logo mark uses --accent
+     alone instead of amber-violet gradients. */
+  background: var(--accent);
+  box-shadow: 0 0 12px rgba(155, 110, 247, 0.6);
 }
 
 .brand-name {
@@ -119,7 +122,7 @@ ul { list-style: none; margin: 0; padding: 0; }
   justify-content: center;
   padding: 10px 14px;
   border-radius: var(--radius-md);
-  background: linear-gradient(135deg, var(--accent), var(--glow));
+  background: var(--accent);
   color: var(--text);
   font-weight: 600;
   font-size: 14px;
@@ -128,7 +131,7 @@ ul { list-style: none; margin: 0; padding: 0; }
 
 .new-chat-btn:hover {
   transform: scale(1.02);
-  box-shadow: 0 0 18px rgba(139, 92, 246, 0.35);
+  box-shadow: 0 0 18px rgba(155, 110, 247, 0.35);
 }
 
 .sidebar-section {
@@ -172,7 +175,7 @@ ul { list-style: none; margin: 0; padding: 0; }
 }
 
 .chat-list li.active {
-  background: rgba(99, 102, 241, 0.16);
+  background: rgba(155, 110, 247, 0.16);
   color: var(--text);
 }
 
@@ -609,7 +612,7 @@ ul { list-style: none; margin: 0; padding: 0; }
   content: "";
   position: absolute;
   inset: -70px;
-  background: radial-gradient(circle, rgba(139, 92, 246, 0.16) 0%, rgba(99, 102, 241, 0.06) 45%, transparent 70%);
+  background: radial-gradient(circle, rgba(240, 163, 78, 0.16) 0%, rgba(155, 110, 247, 0.06) 45%, transparent 70%);
   filter: blur(6px);
   z-index: -1;
 }
@@ -752,7 +755,7 @@ ul { list-style: none; margin: 0; padding: 0; }
 
 .composer:focus-within {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+  box-shadow: 0 0 0 3px rgba(155, 110, 247, 0.15);
 }
 
 .composer-input {
@@ -782,7 +785,7 @@ ul { list-style: none; margin: 0; padding: 0; }
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-full);
-  background: linear-gradient(135deg, var(--accent), var(--glow));
+  background: var(--accent);
   color: var(--text);
   font-size: 16px;
   transition: transform 0.15s var(--ease);
@@ -790,15 +793,19 @@ ul { list-style: none; margin: 0; padding: 0; }
 
 .composer-send:hover { transform: scale(1.06); }
 
+/* Mic states keep --glow (amber) — this is the one UI-chrome spot outside
+   the sphere itself that's directly voice-related, so it stays paired
+   with the sphere's speaking/voice identity rather than switching to
+   --accent like the general buttons above. */
 .composer-mic.listening {
   color: var(--glow);
-  text-shadow: 0 0 8px rgba(139, 92, 246, 0.7);
+  text-shadow: 0 0 8px rgba(240, 163, 78, 0.7);
 }
 
 .composer-mic.voice-chat-active {
-  background: rgba(139, 92, 246, 0.18);
+  background: rgba(240, 163, 78, 0.18);
   color: var(--glow);
-  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.35);
+  box-shadow: 0 0 0 2px rgba(240, 163, 78, 0.35);
 }
 
 /* ============================================================
@@ -927,7 +934,7 @@ ul { list-style: none; margin: 0; padding: 0; }
 
 .bar-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--accent), var(--glow));
+  background: var(--accent);
   border-radius: var(--radius-full);
 }
 
@@ -947,7 +954,7 @@ ul { list-style: none; margin: 0; padding: 0; }
 
 .daily-bar {
   flex: 1;
-  background: linear-gradient(180deg, var(--glow), var(--accent));
+  background: var(--accent);
   border-radius: 3px 3px 0 0;
   min-height: 2px;
 }
@@ -1031,7 +1038,7 @@ ul { list-style: none; margin: 0; padding: 0; }
 
 .form-input:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+  box-shadow: 0 0 0 3px rgba(155, 110, 247, 0.15);
 }
 
 .form-error {
@@ -1051,7 +1058,7 @@ ul { list-style: none; margin: 0; padding: 0; }
 .form-submit {
   padding: 10px 16px;
   border-radius: var(--radius-md);
-  background: linear-gradient(135deg, var(--accent), var(--glow));
+  background: var(--accent);
   color: var(--text);
   font-weight: 600;
   font-size: 14px;
@@ -1081,7 +1088,7 @@ ul { list-style: none; margin: 0; padding: 0; }
   width: 44px;
   height: 44px;
   border-radius: var(--radius-full);
-  background: radial-gradient(circle at 35% 35%, var(--glow), var(--accent) 70%);
+  background: var(--accent);
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -1124,7 +1131,7 @@ ul { list-style: none; margin: 0; padding: 0; }
   display: inline-block;
   padding: 2px 8px;
   border-radius: var(--radius-full);
-  background: rgba(99, 102, 241, 0.18);
+  background: rgba(155, 110, 247, 0.18);
   color: var(--accent);
   font-size: 11px;
   font-weight: 600;

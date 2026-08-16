@@ -50,7 +50,7 @@ predictable code.
 
 - Every route wraps external calls (LLM, search, weather, file parsing) in
   try/except with a specific fallback.
-- User-facing errors: short, friendly, non-technical ("NIMBUS couldn't reach the
+- User-facing errors: short, friendly, non-technical ("CINDRIX couldn't reach the
   weather service — try again in a moment").
 - Technical detail goes to logs (`app/utils/logging` or equivalent), never to the
   client.

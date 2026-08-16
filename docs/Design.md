@@ -2,23 +2,34 @@
 
 ## Identity
 
-NIMBUS is not a ChatGPT/Gemini clone, not the Baymax character, and not a
+CINDRIX is not a ChatGPT/Gemini clone, not the Baymax character, and not a
 JARVIS-style reactor/HUD. There is no face, no head, no body. The mascot is a
 sphere made of individual particles arranged on a Fibonacci lattice (evenly
 distributed points on a sphere, no clumping) rendered with perspective
 projection and depth-based color/opacity. It reads as a living data-presence
-rather than a character — "a cloud of thought," fitting the name Nimbus.
+rather than a character — "a cloud of thought."
 
 ## Color Palette
 
-| Role             | Hex       |
-| ---------------- | --------- |
-| Background       | `#09090B` |
-| Cards            | `#18181B` |
-| Accent           | `#6366F1` |
-| Glow             | `#8B5CF6` |
-| Text (primary)   | `#FFFFFF` |
-| Text (secondary) | `#A1A1AA` |
+Ember Violet (replaces the original indigo/violet palette — see `Memory.md`
+for the rename/palette log entry):
+
+| Role             | Hex / value              |
+| ---------------- | ------------------------- |
+| Background       | `#0A0A0C`                 |
+| Cards            | `#1A1620`                 |
+| Card border      | `rgba(255,255,255,.08)`   |
+| Accent           | `#9B6EF7`                 |
+| Glow             | `#F0A34E` (amber)         |
+| Text (primary)   | `#F5F0FA`                 |
+| Text (secondary) | `rgba(245,240,250,.6)`    |
+
+Glow is amber, not a second violet — it's reserved for the sphere's
+`speaking`-adjacent presence (the ambient halo behind the docked orb) and
+the mic's listening/active states, not used as a general secondary color
+everywhere accent already is. General UI chrome (buttons, bars, avatars,
+the brand mark) uses solid accent instead — see `frontend/css/style.css`
+for the specific spots this was audited.
 
 Style direction: dark theme first, glassmorphism (translucent blurred panels),
 soft gradients, subtle shadows, rounded corners, floating particles in the
@@ -27,14 +38,14 @@ background at low opacity.
 ## Typography
 
 - Clean geometric sans-serif (e.g. Inter or similar) for UI text
-- Slightly larger, confident weight for headers ("NIMBUS", section titles)
+- Slightly larger, confident weight for headers ("CINDRIX", section titles)
 - Monospace accent font reserved for code blocks / technical panels only
 
 ## Layout
 
 ### Header
 
-`NIMBUS` — connection status — current model name
+`CINDRIX` — connection status — current model name
 
 ### Left Sidebar
 
@@ -122,4 +133,8 @@ drifted during the build:
   build.
 - **Ambient glow behind the sphere** — added (soft radial gradient, not in
   the original palette/motion spec) to keep the chat view from feeling empty
-  once the sphere shrinks down from its landing-page size.
+  once the sphere shrinks down from its landing-page size. Now uses the
+  amber Ember Violet glow value — see Color Palette above.
+- **Sphere mouse-interactivity** — not built. Not in the current spec
+  above (states are driven purely by voice/chat lifecycle, not pointer
+  input); planned for a later phase if it turns out to be worth adding.

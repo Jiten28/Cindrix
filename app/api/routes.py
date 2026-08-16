@@ -145,7 +145,7 @@ def export_conversation(conv_id):
 
     lines = [f"# {conv['title']}", ""]
     for m in conv["messages"]:
-        speaker = "You" if m["role"] == "user" else "Nimbus"
+        speaker = "You" if m["role"] == "user" else "Cindrix"
         lines.append(f"**{speaker}** ({m.get('ts', '')}):")
         lines.append("")
         lines.append(m["content"])
