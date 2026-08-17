@@ -2,11 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content" />
 <title>Cindrix</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg" />
 <link rel="stylesheet" href="css/style.css" />
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/i18next/23.11.5/i18next.min.js"></script>
 </head>
 <body>
 
@@ -22,48 +23,51 @@
     </div>
 
     <button class="new-chat-btn" id="newChatBtn">
-      <span aria-hidden="true">+</span> New Chat
+      <span aria-hidden="true">+</span> <span data-i18n="sidebar.newChat">New Chat</span>
     </button>
 
     <div class="sidebar-section">
-      <h2 class="sidebar-label">Recent</h2>
+      <h2 class="sidebar-label" data-i18n="sidebar.recent">Recent</h2>
       <ul class="chat-list" id="chatList">
-        <li class="chat-list-empty">No conversations yet</li>
+        <li class="chat-list-empty" data-i18n="chatList.empty">No conversations yet</li>
       </ul>
     </div>
 
     <div class="sidebar-section">
-      <h2 class="sidebar-label">Explore</h2>
+      <h2 class="sidebar-label" data-i18n="sidebar.explore">Explore</h2>
       <ul class="explore-list">
-        <li data-action="upload">Documents</li>
-        <li data-action="upload">Images</li>
-        <li data-action="voice">Voice</li>
-        <li data-action="coding">Coding</li>
+        <li data-action="upload" data-i18n="sidebar.documents">Documents</li>
+        <li data-action="upload" data-i18n="sidebar.images">Images</li>
+        <li data-action="voice" data-i18n="sidebar.voice">Voice</li>
+        <li data-action="coding" data-i18n="sidebar.coding">Coding</li>
       </ul>
     </div>
 
     <div class="sidebar-footer">
-      <button class="sidebar-footer-btn" id="analyticsBtn">Analytics</button>
-      <button class="sidebar-footer-btn" id="adminBtn" hidden>Admin</button>
-      <button class="sidebar-footer-btn" id="settingsBtn">Settings</button>
-      <button class="sidebar-footer-btn" id="profileBtn">Profile</button>
+      <button class="sidebar-footer-btn" id="analyticsBtn" data-i18n="sidebar.analytics">Analytics</button>
+      <button class="sidebar-footer-btn" id="adminBtn" data-i18n="sidebar.admin" hidden>Admin</button>
+      <button class="sidebar-footer-btn" id="settingsBtn" data-i18n="sidebar.settings">Settings</button>
+      <button class="sidebar-footer-btn" id="profileBtn" data-i18n="sidebar.profile">Profile</button>
     </div>
   </aside>
+
+  <button type="button" class="sidebar-backdrop" id="sidebarBackdrop" aria-label="Close sidebar" hidden></button>
 
   <!-- Main -->
   <main class="main">
 
     <header class="topbar">
-      <button class="icon-btn" id="sidebarToggle" aria-label="Toggle sidebar">☰</button>
+      <button class="icon-btn" id="sidebarToggle" aria-label="Toggle sidebar" data-i18n-aria-label="sidebar.toggleSidebar">☰</button>
       <div class="topbar-title">Cindrix</div>
       <div class="topbar-controls">
-        <select id="modelSelect" class="voice-select" title="AI model"></select>
-        <select id="voiceSelect" class="voice-select" title="Voice used for spoken replies during voice chat"></select>
+        <select id="langSelect" class="voice-select lang-select" data-i18n-title="topbar.languageLabel" title="Language"></select>
+        <select id="modelSelect" class="voice-select" title="AI model" data-i18n-title="topbar.modelSelectTitle"></select>
+        <select id="voiceSelect" class="voice-select" title="Voice used for spoken replies during voice chat" data-i18n-title="topbar.voiceSelectTitle"></select>
         <div class="export-wrap">
-          <button class="icon-btn" id="exportBtn" aria-label="Export conversation" title="Export conversation">⬇</button>
+          <button class="icon-btn" id="exportBtn" aria-label="Export conversation" title="Export conversation" data-i18n-aria-label="topbar.exportConversation" data-i18n-title="topbar.exportConversation">⬇</button>
           <div class="export-menu" id="exportMenu" hidden>
-            <button type="button" class="attach-menu-item" data-format="md">📝 Export as Markdown</button>
-            <button type="button" class="attach-menu-item" data-format="json">🗂️ Export as JSON</button>
+            <button type="button" class="attach-menu-item" data-format="md"><span aria-hidden="true">📝</span> <span data-i18n="topbar.exportMarkdown">Export as Markdown</span></button>
+            <button type="button" class="attach-menu-item" data-format="json"><span aria-hidden="true">🗂️</span> <span data-i18n="topbar.exportJson">Export as JSON</span></button>
           </div>
         </div>
       </div>
@@ -81,15 +85,15 @@
         <p class="sphere-state" id="sphereState"></p>
       </div>
 
-      <h1 class="landing-title">Intelligent. Creative. Limitless.</h1>
-      <p class="landing-subtitle">What would you like to discover today?</p>
+      <h1 class="landing-title" data-i18n="landing.title">Intelligent. Creative. Limitless.</h1>
+      <p class="landing-subtitle" data-i18n="landing.subtitle">What would you like to discover today?</p>
 
       <div class="suggestions">
-        <button class="chip" data-prompt="Code Generation">Code Generation</button>
-        <button class="chip" data-prompt="Deep Research">Deep Research</button>
-        <button class="chip" data-prompt="Resume Review">Resume Review</button>
-        <button class="chip" data-prompt="Travel Planning">Travel Planning</button>
-        <button class="chip" data-prompt="Data Analysis">Data Analysis</button>
+        <button class="chip" data-prompt="Code Generation" data-i18n="chips.codeGeneration">Code Generation</button>
+        <button class="chip" data-prompt="Deep Research" data-i18n="chips.deepResearch">Deep Research</button>
+        <button class="chip" data-prompt="Resume Review" data-i18n="chips.resumeReview">Resume Review</button>
+        <button class="chip" data-prompt="Travel Planning" data-i18n="chips.travelPlanning">Travel Planning</button>
+        <button class="chip" data-prompt="Data Analysis" data-i18n="chips.dataAnalysis">Data Analysis</button>
       </div>
     </section>
 
@@ -102,31 +106,32 @@
     <div class="composer-dock">
       <div class="attachment-chip" id="attachmentChip" hidden>
         <span id="attachmentChipLabel"></span>
-        <button type="button" id="attachmentChipRemove" aria-label="Remove attachment">✕</button>
+        <button type="button" id="attachmentChipRemove" aria-label="Remove attachment" data-i18n-aria-label="composer.removeAttachment">✕</button>
       </div>
 
       <div class="attach-menu" id="attachMenu" hidden>
-        <button type="button" class="attach-menu-item" data-prompt="Code Generation">💻 Code Generation</button>
-        <button type="button" class="attach-menu-item" data-prompt="Deep Research">🔎 Deep Research</button>
-        <button type="button" class="attach-menu-item" data-prompt="Resume Review">📄 Resume Review</button>
-        <button type="button" class="attach-menu-item" data-prompt="Travel Planning">✈️ Travel Planning</button>
-        <button type="button" class="attach-menu-item" data-prompt="Data Analysis">📊 Data Analysis</button>
+        <button type="button" class="attach-menu-item" data-prompt="Code Generation"><span aria-hidden="true">💻</span> <span data-i18n="chips.codeGeneration">Code Generation</span></button>
+        <button type="button" class="attach-menu-item" data-prompt="Deep Research"><span aria-hidden="true">🔎</span> <span data-i18n="chips.deepResearch">Deep Research</span></button>
+        <button type="button" class="attach-menu-item" data-prompt="Resume Review"><span aria-hidden="true">📄</span> <span data-i18n="chips.resumeReview">Resume Review</span></button>
+        <button type="button" class="attach-menu-item" data-prompt="Travel Planning"><span aria-hidden="true">✈️</span> <span data-i18n="chips.travelPlanning">Travel Planning</span></button>
+        <button type="button" class="attach-menu-item" data-prompt="Data Analysis"><span aria-hidden="true">📊</span> <span data-i18n="chips.dataAnalysis">Data Analysis</span></button>
         <div class="attach-menu-divider"></div>
-        <button type="button" class="attach-menu-item" id="attachMenuUpload">📎 Upload document or image</button>
+        <button type="button" class="attach-menu-item" id="attachMenuUpload"><span aria-hidden="true">📎</span> <span data-i18n="chips.uploadDocOrImage">Upload document or image</span></button>
       </div>
 
       <form class="composer" id="composerForm">
-        <button type="button" class="icon-btn composer-attach" id="attachBtn" aria-label="Attach or use a quick action" title="Attach a document/image or use a quick action">+</button>
+        <button type="button" class="icon-btn composer-attach" id="attachBtn" aria-label="Attach or use a quick action" title="Attach a document/image or use a quick action" data-i18n-aria-label="composer.attach" data-i18n-title="composer.attach">+</button>
         <input type="file" id="fileInput" accept=".pdf,.txt,.docx,.png,.jpg,.jpeg,.webp" hidden />
         <input
           type="text"
           id="composerInput"
           class="composer-input"
           placeholder="Ask Cindrix anything..."
+          data-i18n-placeholder="composer.placeholder"
           autocomplete="off"
         />
-        <button type="button" class="icon-btn composer-mic" id="micBtn" aria-label="Start voice chat" title="Start voice chat">🎤</button>
-        <button type="submit" class="composer-send" aria-label="Send message">↑</button>
+        <button type="button" class="icon-btn composer-mic" id="micBtn" aria-label="Start voice chat" title="Start voice chat" data-i18n-aria-label="composer.startVoiceChat" data-i18n-title="composer.startVoiceChat">🎤</button>
+        <button type="submit" class="composer-send" aria-label="Send message" data-i18n-aria-label="composer.sendMessage">↑</button>
       </form>
     </div>
 
@@ -247,6 +252,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="js/starfield.js"></script>
 <script src="js/particle-sphere.js"></script>
+<script src="js/i18n.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

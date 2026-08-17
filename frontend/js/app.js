@@ -5,6 +5,10 @@
   // instances rather than one canvas moved between layouts.
   const landingSphere = window.createCindrixSphere("sphere", "sphereState");
   const chatSphere = window.createCindrixSphere("sphereChat", "sphereStateChat");
+  // Chat orb isn't shown until a conversation starts — no sense ticking its
+  // 220-particle transform every frame before then. See activateChatView()/
+  // resetToLanding() for where this flips as the view changes.
+  chatSphere.setPaused(true);
 
   let conversationStarted = false;
   function activeSphere() {
@@ -41,6 +45,7 @@
   const micBtn = document.getElementById("micBtn");
   const sidebar = document.getElementById("sidebar");
   const sidebarToggle = document.getElementById("sidebarToggle");
+  const sidebarBackdrop = document.getElementById("sidebarBackdrop");
   const newChatBtn = document.getElementById("newChatBtn");
   const chatList = document.getElementById("chatList");
   const appRoot = document.querySelector(".app");
@@ -189,9 +194,18 @@
     landing.classList.add("landing-exit");
     chatSection.hidden = false;
     appRoot.classList.add("chat-active");
-    setTimeout(() => { landing.hidden = true; }, 520);
+    setTimeout(() => {
+      landing.hidden = true;
+      // Only one orb is ever visible at a time (landing vs. docked chat) —
+      // pausing the hidden one's per-particle tick (220 points, every
+      // frame) is a real, previously-unused saving, especially on mobile
+      // GPUs. Paused after the crossfade finishes, not immediately, so the
+      // outgoing orb doesn't visibly freeze mid-transition.
+      landingSphere.setPaused(true);
+    }, 520);
     // hand off orb state from landing to the docked chat orb
     chatSphere.setState(landingSphere.getState());
+    chatSphere.setPaused(false);
   }
 
   function resetToLanding() {
@@ -203,6 +217,8 @@
     messagesEl.innerHTML = "";
     landingSphere.setState("idle");
     chatSphere.setState("idle");
+    landingSphere.setPaused(false);
+    chatSphere.setPaused(true);
     currentTitle = null;
     currentConversationId = null;
     lastUserText = null;
@@ -213,9 +229,69 @@
   }
 
   // ---------- sidebar ----------
+  // Below 860px the sidebar switches to an overlay drawer (see the
+  // matching CSS media query) — closed by default there, with a tap-to-
+  // close backdrop and auto-close after picking something inside it.
+  // Desktop keeps the plain collapse/expand toggle it already had.
+
+  const MOBILE_BREAKPOINT = 860;
+  function isMobileViewport() {
+    return window.innerWidth <= MOBILE_BREAKPOINT;
+  }
+
+  function openSidebarDrawer() {
+    sidebar.classList.remove("collapsed");
+    if (isMobileViewport()) sidebarBackdrop.hidden = false;
+  }
+
+  function closeSidebarDrawer() {
+    sidebar.classList.add("collapsed");
+    sidebarBackdrop.hidden = true;
+  }
 
   sidebarToggle.addEventListener("click", () => {
-    sidebar.classList.toggle("collapsed");
+    if (sidebar.classList.contains("collapsed")) {
+      openSidebarDrawer();
+    } else {
+      closeSidebarDrawer();
+    }
+  });
+
+  sidebarBackdrop.addEventListener("click", closeSidebarDrawer);
+
+  // Delegated so every current and future nav item (new chat, a
+  // conversation in the list, Explore items, the footer buttons) gets
+  // this without a separate listener each — only acts on mobile, and
+  // never on the toggle button itself (it already manages its own state).
+  sidebar.addEventListener("click", (e) => {
+    if (!isMobileViewport()) return;
+    if (sidebarToggle.contains(e.target)) return;
+    if (e.target.closest('button, li[data-action], .chat-list li:not(.chat-list-empty)')) {
+      closeSidebarDrawer();
+    }
+  });
+
+  function applyResponsiveSidebarDefault() {
+    if (isMobileViewport()) {
+      closeSidebarDrawer();
+    } else {
+      sidebar.classList.remove("collapsed");
+      sidebarBackdrop.hidden = true;
+    }
+  }
+  applyResponsiveSidebarDefault();
+
+  // Only react to genuinely crossing the breakpoint (rotating a phone/
+  // tablet, resizing across it) — not every resize tick within the same
+  // side of it, which would otherwise stomp on a desktop user's manual
+  // collapse/expand choice every time their window resizes slightly.
+  let wasMobileViewport = isMobileViewport();
+  window.addEventListener("resize", () => {
+    const nowMobile = isMobileViewport();
+    if (nowMobile !== wasMobileViewport) {
+      wasMobileViewport = nowMobile;
+      applyResponsiveSidebarDefault();
+    }
   });
 
   newChatBtn.addEventListener("click", resetToLanding);
@@ -226,7 +302,7 @@
       const list = await res.json();
       chatList.innerHTML = "";
       if (!list.length) {
-        chatList.innerHTML = '<li class="chat-list-empty">No conversations yet</li>';
+        chatList.innerHTML = `<li class="chat-list-empty" data-i18n="chatList.empty">${window.CindrixI18n.t("chatList.empty", "No conversations yet")}</li>`;
         return;
       }
       list.forEach((conv) => {
@@ -681,8 +757,11 @@
   function setVoiceChatUI(active) {
     voiceChatActive = active;
     micBtn.classList.toggle("voice-chat-active", active);
-    micBtn.title = active ? "Stop voice chat" : "Start voice chat";
-    micBtn.setAttribute("aria-label", active ? "Stop voice chat" : "Start voice chat");
+    const label = active
+      ? window.CindrixI18n.t("composer.stopVoiceChat", "Stop voice chat")
+      : window.CindrixI18n.t("composer.startVoiceChat", "Start voice chat");
+    micBtn.title = label;
+    micBtn.setAttribute("aria-label", label);
   }
 
   function startListening() {
@@ -744,7 +823,10 @@
     });
   } else {
     micBtn.disabled = true;
-    micBtn.title = "Voice input isn't supported in this browser — try Chrome or Edge";
+    micBtn.title = window.CindrixI18n.t(
+      "composer.voiceNotSupported",
+      "Voice input isn't supported in this browser — try Chrome or Edge"
+    );
   }
 
   // ---------- export ----------

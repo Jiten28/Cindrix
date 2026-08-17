@@ -1,0 +1,48 @@
+{
+  "sidebar": {
+    "newChat": "Nuevo chat",
+    "recent": "Recientes",
+    "explore": "Explorar",
+    "documents": "Documentos",
+    "images": "Imágenes",
+    "voice": "Voz",
+    "coding": "Código",
+    "analytics": "Analítica",
+    "settings": "Configuración",
+    "profile": "Perfil",
+    "admin": "Administración",
+    "toggleSidebar": "Alternar barra lateral"
+  },
+  "topbar": {
+    "modelSelectTitle": "Modelo de IA",
+    "voiceSelectTitle": "Voz utilizada para las respuestas habladas durante el chat de voz",
+    "exportConversation": "Exportar conversación",
+    "exportMarkdown": "Exportar como Markdown",
+    "exportJson": "Exportar como JSON",
+    "languageLabel": "Idioma"
+  },
+  "landing": {
+    "title": "Inteligente. Creativo. Ilimitado.",
+    "subtitle": "¿Qué te gustaría descubrir hoy?"
+  },
+  "chips": {
+    "codeGeneration": "Generación de código",
+    "deepResearch": "Investigación profunda",
+    "resumeReview": "Revisión de currículum",
+    "travelPlanning": "Planificación de viajes",
+    "dataAnalysis": "Análisis de datos",
+    "uploadDocOrImage": "Subir documento o imagen"
+  },
+  "composer": {
+    "placeholder": "Pregúntale a Cindrix lo que quieras...",
+    "attach": "Adjuntar o usar una acción rápida",
+    "startVoiceChat": "Iniciar chat de voz",
+    "stopVoiceChat": "Detener chat de voz",
+    "voiceNotSupported": "La entrada de voz no es compatible con este navegador — prueba con Chrome o Edge",
+    "sendMessage": "Enviar mensaje",
+    "removeAttachment": "Quitar archivo adjunto"
+  },
+  "chatList": {
+    "empty": "Aún no hay conversaciones"
+  }
+}

@@ -1,8 +1,9 @@
 /**
  * createCindrixSphere — factory for the particle-sphere identity from
- * docs/Design.md. ~220 points on a Fibonacci lattice; state changes radius,
- * rotation speed, and per-particle offset only — the lattice itself never
- * changes.
+ * docs/Design.md. ~220 points on a Fibonacci lattice on desktop, fewer
+ * (110) below a 640px viewport width for mobile performance — state
+ * changes radius, rotation speed, and per-particle offset only; the
+ * lattice itself never changes shape mid-session.
  *
  * Refactored into a factory (Phase 2b) so the landing orb and the docked
  * chat-mode orb can each run their own independent instance/canvas — needed
@@ -21,7 +22,13 @@ window.createCindrixSphere = function (canvasId, labelId) {
   const ACCENT = [155, 110, 247]; // --accent  #9B6EF7
   const MUTED = [245, 240, 250];  // --text base color #F5F0FA (--text-secondary's base hue before its .6 alpha)
 
-  const N = 220;
+  // Fewer points on narrow viewports — mid-range phones can visibly drop
+  // frames animating ~220 canvas particles every frame, and it's pure
+  // decoration, not something that needs the full desktop density to read
+  // as "a sphere." Checked once at creation time, not on resize/rotate,
+  // since going from a 220-particle to a 110-particle lattice mid-animation
+  // would be a visible pop, not a smooth transition.
+  const N = window.innerWidth < 640 ? 110 : 220;
   const golden = Math.PI * (3 - Math.sqrt(5));
   const particles = [];
   for (let i = 0; i < N; i++) {

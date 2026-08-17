@@ -1,0 +1,48 @@
+{
+  "sidebar": {
+    "newChat": "नई चैट",
+    "recent": "हाल की",
+    "explore": "एक्सप्लोर करें",
+    "documents": "दस्तावेज़",
+    "images": "छवियाँ",
+    "voice": "आवाज़",
+    "coding": "कोडिंग",
+    "analytics": "एनालिटिक्स",
+    "settings": "सेटिंग्स",
+    "profile": "प्रोफ़ाइल",
+    "admin": "एडमिन",
+    "toggleSidebar": "साइडबार टॉगल करें"
+  },
+  "topbar": {
+    "modelSelectTitle": "एआई मॉडल",
+    "voiceSelectTitle": "वॉइस चैट के दौरान बोले गए उत्तरों के लिए उपयोग की जाने वाली आवाज़",
+    "exportConversation": "बातचीत निर्यात करें",
+    "exportMarkdown": "मार्कडाउन के रूप में निर्यात करें",
+    "exportJson": "JSON के रूप में निर्यात करें",
+    "languageLabel": "भाषा"
+  },
+  "landing": {
+    "title": "बुद्धिमान। रचनात्मक। असीमित।",
+    "subtitle": "आज आप क्या जानना चाहेंगे?"
+  },
+  "chips": {
+    "codeGeneration": "कोड जनरेशन",
+    "deepResearch": "गहन शोध",
+    "resumeReview": "रिज़्यूमे समीक्षा",
+    "travelPlanning": "यात्रा योजना",
+    "dataAnalysis": "डेटा विश्लेषण",
+    "uploadDocOrImage": "दस्तावेज़ या छवि अपलोड करें"
+  },
+  "composer": {
+    "placeholder": "Cindrix से कुछ भी पूछें...",
+    "attach": "फ़ाइल जोड़ें या त्वरित कार्रवाई का उपयोग करें",
+    "startVoiceChat": "वॉइस चैट शुरू करें",
+    "stopVoiceChat": "वॉइस चैट बंद करें",
+    "voiceNotSupported": "इस ब्राउज़र में वॉइस इनपुट समर्थित नहीं है — Chrome या Edge आज़माएँ",
+    "sendMessage": "संदेश भेजें",
+    "removeAttachment": "अटैचमेंट हटाएँ"
+  },
+  "chatList": {
+    "empty": "अभी तक कोई बातचीत नहीं"
+  }
+}

@@ -55,6 +55,7 @@ ul { list-style: none; margin: 0; padding: 0; }
   position: relative;
   display: flex;
   min-height: 100vh;
+  min-height: 100dvh; /* accounts for mobile browser chrome/keyboard */
   width: 100vw;
 }
 
@@ -75,12 +76,13 @@ ul { list-style: none; margin: 0; padding: 0; }
   z-index: 3;
   width: 260px;
   height: 100vh;
+  height: 100dvh;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   gap: 20px;
   padding: 20px 16px;
-  background: rgba(24, 24, 27, 0.55);
+  background: rgba(26, 22, 32, 0.55);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
   border-right: 1px solid var(--card-border);
@@ -229,7 +231,7 @@ ul { list-style: none; margin: 0; padding: 0; }
   align-items: center;
   gap: 12px;
   padding: 14px 20px;
-  background: rgba(9, 9, 11, 0.72);
+  background: rgba(10, 10, 12, 0.72);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border-bottom: 1px solid transparent;
@@ -260,6 +262,12 @@ ul { list-style: none; margin: 0; padding: 0; }
   border-radius: var(--radius-md);
   padding: 5px 8px;
   max-width: 140px;
+  /* Truncate the selected option's text cleanly with an ellipsis instead
+     of letting it silently clip at the box edge — matters most once this
+     shrinks further on narrow viewports below. */
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .topbar-status {
@@ -306,7 +314,11 @@ ul { list-style: none; margin: 0; padding: 0; }
    ============================================================ */
 .landing {
   min-height: calc(100vh - 63px);
+  min-height: calc(100dvh - 63px); /* keeps the composer reachable when a
+    mobile keyboard shrinks the visible viewport — 100vh alone doesn't
+    shrink with it in every browser, which is what would clip content */
   max-height: 100vh;
+  max-height: 100dvh;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -701,7 +713,7 @@ ul { list-style: none; margin: 0; padding: 0; }
 .attach-menu {
   max-width: 260px;
   margin: 0 auto 8px;
-  background: rgba(24, 24, 27, 0.92);
+  background: rgba(26, 22, 32, 0.92);
   border: 1px solid var(--card-border);
   border-radius: var(--radius-lg);
   padding: 6px;
@@ -746,7 +758,7 @@ ul { list-style: none; margin: 0; padding: 0; }
   margin: 0 auto;
   padding: 8px 8px 8px 16px;
   border-radius: var(--radius-full);
-  background: rgba(24, 24, 27, 0.75);
+  background: rgba(26, 22, 32, 0.75);
   border: 1px solid var(--card-border);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
@@ -820,7 +832,7 @@ ul { list-style: none; margin: 0; padding: 0; }
   top: 42px;
   right: 0;
   width: 220px;
-  background: rgba(24, 24, 27, 0.95);
+  background: rgba(26, 22, 32, 0.95);
   border: 1px solid var(--card-border);
   border-radius: var(--radius-lg);
   padding: 6px;
@@ -966,10 +978,78 @@ ul { list-style: none; margin: 0; padding: 0; }
   .sidebar {
     position: fixed;
     inset: 0 auto 0 0;
+    z-index: 15; /* above the backdrop (12) and everything in .main */
   }
   .sidebar:not(.collapsed) { box-shadow: 0 0 40px rgba(0,0,0,0.5); }
   .sidebar.collapsed { margin-left: -260px; }
   .landing-title { font-size: 21px; }
+
+  /* Drawer scrim — shown/hidden in sync with .sidebar's collapsed state by
+     app.js. Sits below the sidebar itself but above everything else in
+     .main (including the sticky topbar), and closes the drawer on tap. */
+  .sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 12;
+    background: rgba(0, 0, 0, 0.5);
+    border: none;
+    padding: 0;
+    cursor: default;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* Narrower phones specifically (not just "not desktop") — the topbar's
+   three selects plus the export button don't have room to sit at their
+   desktop widths next to the title and status badge; this is the same
+   class of overflow the brief flagged from the other project's navbar. */
+@media (max-width: 640px) {
+  .topbar {
+    padding: 12px 14px;
+    gap: 8px;
+  }
+
+  .topbar-status {
+    /* The model select already shows the active model — this badge is
+       redundant on a phone-width topbar and the first thing worth losing
+       to make room, rather than letting the selects get too narrow to
+       read at all. */
+    display: none;
+  }
+
+  .topbar-controls {
+    margin-left: auto;
+    gap: 4px;
+    /* Belt-and-suspenders: even after the narrower max-width below, if
+       something still doesn't fit (a long voice name, a fifth control
+       added later), this scrolls horizontally instead of silently
+       clipping or breaking the row layout. */
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .topbar-controls::-webkit-scrollbar { display: none; }
+
+  .voice-select {
+    max-width: 92px;
+    font-size: 11px;
+    padding: 5px 6px;
+    flex-shrink: 0;
+  }
+
+  .export-wrap .icon-btn,
+  #sidebarToggle {
+    flex-shrink: 0;
+  }
+
+  /* Extra safety net for the keyboard-clipping fix above (the dvh rules on
+     .landing) — on browsers where dvh support is inconsistent, drop the
+     hard viewport clamp entirely on phones so the page can scroll to
+     reach the composer rather than ever hard-clip it. */
+  .landing {
+    max-height: none;
+    overflow: visible;
+  }
 }
 
 /* ============================================================

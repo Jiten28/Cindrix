@@ -11,7 +11,19 @@
   let w = 0, h = 0, dpr = 1;
 
   const STAR_COUNT_PER_1000PX2 = 0.09; // sparse on purpose
+  // Below this width (phones in portrait), the starfield is switched off
+  // entirely rather than just thinned — it's pure background decoration,
+  // and a continuous full-viewport canvas rAF loop is a real battery/frame
+  // -rate cost on mid-range phones for something that competes with, not
+  // supports, the particle sphere anyway (see the file header note).
+  const DISABLE_BELOW_WIDTH = 480;
   const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const disabled = window.innerWidth < DISABLE_BELOW_WIDTH;
+
+  if (disabled) {
+    canvas.hidden = true;
+    return;
+  }
 
   function resize() {
     dpr = Math.min(window.devicePixelRatio || 1, 2);

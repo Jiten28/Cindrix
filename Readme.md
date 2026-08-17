@@ -104,8 +104,11 @@ assistant (or future you) can pick up context instantly:
 ## Setup
 
 ```bash
-git clone https://github.com/Jiten28/Cindrix.git
-cd Cindrix
+# repo itself is still named Nimbus-AI on GitHub for now — the rename
+# below is just the in-app product name, not the repo (that's a manual
+# rename you'll do separately)
+git clone https://github.com/Jiten28/Nimbus-AI.git
+cd Nimbus-AI
 pip install -r requirements.txt
 ```
 

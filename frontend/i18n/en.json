@@ -1,0 +1,48 @@
+{
+  "sidebar": {
+    "newChat": "New Chat",
+    "recent": "Recent",
+    "explore": "Explore",
+    "documents": "Documents",
+    "images": "Images",
+    "voice": "Voice",
+    "coding": "Coding",
+    "analytics": "Analytics",
+    "settings": "Settings",
+    "profile": "Profile",
+    "admin": "Admin",
+    "toggleSidebar": "Toggle sidebar"
+  },
+  "topbar": {
+    "modelSelectTitle": "AI model",
+    "voiceSelectTitle": "Voice used for spoken replies during voice chat",
+    "exportConversation": "Export conversation",
+    "exportMarkdown": "Export as Markdown",
+    "exportJson": "Export as JSON",
+    "languageLabel": "Language"
+  },
+  "landing": {
+    "title": "Intelligent. Creative. Limitless.",
+    "subtitle": "What would you like to discover today?"
+  },
+  "chips": {
+    "codeGeneration": "Code Generation",
+    "deepResearch": "Deep Research",
+    "resumeReview": "Resume Review",
+    "travelPlanning": "Travel Planning",
+    "dataAnalysis": "Data Analysis",
+    "uploadDocOrImage": "Upload document or image"
+  },
+  "composer": {
+    "placeholder": "Ask Cindrix anything...",
+    "attach": "Attach or use a quick action",
+    "startVoiceChat": "Start voice chat",
+    "stopVoiceChat": "Stop voice chat",
+    "voiceNotSupported": "Voice input isn't supported in this browser — try Chrome or Edge",
+    "sendMessage": "Send message",
+    "removeAttachment": "Remove attachment"
+  },
+  "chatList": {
+    "empty": "No conversations yet"
+  }
+}

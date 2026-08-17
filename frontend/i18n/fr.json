@@ -1,0 +1,48 @@
+{
+  "sidebar": {
+    "newChat": "Nouvelle discussion",
+    "recent": "Récents",
+    "explore": "Explorer",
+    "documents": "Documents",
+    "images": "Images",
+    "voice": "Voix",
+    "coding": "Code",
+    "analytics": "Analytique",
+    "settings": "Paramètres",
+    "profile": "Profil",
+    "admin": "Administration",
+    "toggleSidebar": "Afficher/masquer la barre latérale"
+  },
+  "topbar": {
+    "modelSelectTitle": "Modèle d'IA",
+    "voiceSelectTitle": "Voix utilisée pour les réponses parlées pendant le chat vocal",
+    "exportConversation": "Exporter la conversation",
+    "exportMarkdown": "Exporter en Markdown",
+    "exportJson": "Exporter en JSON",
+    "languageLabel": "Langue"
+  },
+  "landing": {
+    "title": "Intelligent. Créatif. Illimité.",
+    "subtitle": "Que souhaitez-vous découvrir aujourd'hui ?"
+  },
+  "chips": {
+    "codeGeneration": "Génération de code",
+    "deepResearch": "Recherche approfondie",
+    "resumeReview": "Révision de CV",
+    "travelPlanning": "Planification de voyage",
+    "dataAnalysis": "Analyse de données",
+    "uploadDocOrImage": "Importer un document ou une image"
+  },
+  "composer": {
+    "placeholder": "Demandez ce que vous voulez à Cindrix...",
+    "attach": "Joindre un fichier ou utiliser une action rapide",
+    "startVoiceChat": "Démarrer le chat vocal",
+    "stopVoiceChat": "Arrêter le chat vocal",
+    "voiceNotSupported": "La saisie vocale n'est pas prise en charge par ce navigateur — essayez Chrome ou Edge",
+    "sendMessage": "Envoyer le message",
+    "removeAttachment": "Supprimer la pièce jointe"
+  },
+  "chatList": {
+    "empty": "Aucune conversation pour l'instant"
+  }
+}
