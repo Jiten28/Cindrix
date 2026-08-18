@@ -190,3 +190,18 @@ Phase 2 RAG pipeline and the Phase 1 voice loop — forward into a
 hackathon-ready submission under deadline pressure: a rename (CINDRIX), a
 visual refresh (Ember Violet palette), verification/fixes to the existing
 voice pipeline, and updated docs. See `Memory.md` for the dated log entry.
+
+**Status:**
+- Hackathon Phase 1 (rename, palette, voice pipeline verification) — done.
+- Hackathon Phase 2 (STT provider compliance, chunking + vector DB,
+  latency harness, guardrails, retry/hardening) — built and unit-tested
+  this session; **not yet verified against a real environment** (real
+  Sarvam call, real MSMARCO-XI ingest, real Gemini-backed latency
+  numbers) — see `Testing.md` section 17b for the exact remaining list.
+  This is the priority before anything else, including resuming the
+  paused interface-polish work below.
+- Interface polish, core (sphere mouse-interactivity, light/dark toggle)
+  and Interface polish, extended (i18n, mobile responsiveness — both
+  already built pre-hackathon-brief, just not yet resumed) — paused,
+  resume only after Hackathon Phase 2 passes real-environment
+  verification.

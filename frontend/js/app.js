@@ -526,7 +526,7 @@
 
       if (viaVoice) {
         speak(full, () => {
-          if (voiceChatActive) startListening();
+          if (voiceChatActive) window.CindrixVoice.startListening();
         });
       } else {
         activeSphere().setState("idle");
@@ -545,7 +545,7 @@
 
   composerForm.addEventListener("submit", (e) => {
     e.preventDefault();
-    if (voiceChatActive) stopVoiceChat();
+    if (voiceChatActive) window.CindrixVoice.stopVoiceChat();
     sendMessage(composerInput.value, false);
   });
 
@@ -741,7 +741,18 @@
       .replace(/\*([^*]+)\*/g, "$1");
   }
 
-  // ---------- voice input (browser STT) ----------
+  // ---------- voice input (browser STT, or Sarvam server-side STT) ----------
+  // STT_PROVIDER (fetched below) decides which of the two implementations
+  // this section wires up. Both funnel into the exact same downstream call
+  // — sendMessage(transcript, true) — so everything past "we have a final
+  // transcript" (RAG routing, streaming, TTS, sphere states) is identical
+  // regardless of provider. See docs/Architecture.md's STT Provider section.
+
+  let sttProvider = "webspeech"; // overwritten once /api/config resolves; see below
+  // Safe no-op default in case a click races ahead of /api/config resolving
+  // (same-origin fetch, so this window is narrow) — overwritten by whichever
+  // real provider initializes below.
+  window.CindrixVoice = { startListening() {}, stopVoiceChat() { setVoiceChatUI(false); } };
 
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   let recognizer = null;
@@ -764,7 +775,9 @@
     micBtn.setAttribute("aria-label", label);
   }
 
-  function startListening() {
+  // ===== Provider A: Web Speech API (browser-native, dev/fallback) =====
+
+  function startListeningWebSpeech() {
     if (!recognizer || listening) return;
     try {
       recognizer.start();
@@ -774,14 +787,22 @@
     }
   }
 
-  function stopVoiceChat() {
+  function stopVoiceChatWebSpeech() {
     setVoiceChatUI(false);
     if (listening) recognizer.stop();
     window.speechSynthesis.cancel();
     activeSphere().setState("idle");
   }
 
-  if (SpeechRecognition) {
+  function setupWebSpeechProvider() {
+    if (!SpeechRecognition) {
+      micBtn.disabled = true;
+      micBtn.title = window.CindrixI18n.t(
+        "composer.voiceNotSupported",
+        "Voice input isn't supported in this browser — try Chrome or Edge"
+      );
+      return;
+    }
     recognizer = new SpeechRecognition();
     recognizer.continuous = false;
     recognizer.interimResults = false;
@@ -815,19 +836,189 @@
 
     micBtn.addEventListener("click", () => {
       if (voiceChatActive) {
-        stopVoiceChat();
+        stopVoiceChatWebSpeech();
         return;
       }
       setVoiceChatUI(true);
-      startListening();
+      startListeningWebSpeech();
     });
-  } else {
-    micBtn.disabled = true;
-    micBtn.title = window.CindrixI18n.t(
-      "composer.voiceNotSupported",
-      "Voice input isn't supported in this browser — try Chrome or Edge"
-    );
+
+    window.CindrixVoice = { startListening: startListeningWebSpeech, stopVoiceChat: stopVoiceChatWebSpeech };
   }
+
+  // ===== Provider B: Sarvam (server-side, hackathon-compliant) =====
+  // No SpeechRecognition API involved at all — records raw audio via
+  // MediaRecorder, detects when the user has stopped talking with a small
+  // Web Audio volume analyser (WebSpeech gets this "for free" from the
+  // browser; recording raw audio doesn't, so it's built here), then POSTs
+  // the clip to /api/stt. SARVAM_API_KEY never touches the browser — only
+  // the backend (app/ai/stt.py) holds it.
+
+  function setupSarvamProvider() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
+      micBtn.disabled = true;
+      micBtn.title = window.CindrixI18n.t(
+        "composer.voiceNotSupported",
+        "Voice input isn't supported in this browser — try Chrome or Edge"
+      );
+      return;
+    }
+
+    const SILENCE_RMS_THRESHOLD = 0.02; // 0-1 scale; below this counts as silence
+    const SILENCE_STOP_MS = 1200; // auto-stop this long after speech ends
+    const MAX_RECORDING_MS = 20000; // safety cap regardless of silence detection
+
+    let mediaStream = null;
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let audioCtx = null;
+    let analyser = null;
+    let silenceTimer = null;
+    let maxDurationTimer = null;
+    let hasHeardSpeech = false;
+    let sarvamListening = false;
+
+    function teardownAudioGraph() {
+      if (silenceTimer) { clearTimeout(silenceTimer); silenceTimer = null; }
+      if (maxDurationTimer) { clearTimeout(maxDurationTimer); maxDurationTimer = null; }
+      if (audioCtx) { audioCtx.close().catch(() => {}); audioCtx = null; }
+      analyser = null;
+      if (mediaStream) { mediaStream.getTracks().forEach((t) => t.stop()); mediaStream = null; }
+    }
+
+    function monitorSilence() {
+      if (!analyser) return;
+      const data = new Uint8Array(analyser.fftSize);
+      analyser.getByteTimeDomainData(data);
+      let sumSquares = 0;
+      for (let i = 0; i < data.length; i++) {
+        const norm = (data[i] - 128) / 128;
+        sumSquares += norm * norm;
+      }
+      const rms = Math.sqrt(sumSquares / data.length);
+
+      if (rms > SILENCE_RMS_THRESHOLD) {
+        hasHeardSpeech = true;
+        if (silenceTimer) { clearTimeout(silenceTimer); silenceTimer = null; }
+      } else if (hasHeardSpeech && !silenceTimer) {
+        silenceTimer = setTimeout(() => stopSarvamRecording(), SILENCE_STOP_MS);
+      }
+      if (mediaRecorder && mediaRecorder.state === "recording") {
+        requestAnimationFrame(monitorSilence);
+      }
+    }
+
+    async function startSarvamRecording() {
+      if (sarvamListening) return;
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch (err) {
+        showMicError(err.message || "microphone permission denied");
+        setVoiceChatUI(false);
+        return;
+      }
+
+      audioChunks = [];
+      hasHeardSpeech = false;
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "";
+      mediaRecorder = mimeType ? new MediaRecorder(mediaStream, { mimeType }) : new MediaRecorder(mediaStream);
+      mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data); };
+      mediaRecorder.onstop = handleSarvamRecordingStopped;
+
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const source = audioCtx.createMediaStreamSource(mediaStream);
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 2048;
+      source.connect(analyser);
+
+      sarvamListening = true;
+      micBtn.classList.add("listening");
+      activeSphere().setState("listening");
+      mediaRecorder.start();
+      requestAnimationFrame(monitorSilence);
+      maxDurationTimer = setTimeout(() => stopSarvamRecording(), MAX_RECORDING_MS);
+    }
+
+    function stopSarvamRecording() {
+      if (!sarvamListening || !mediaRecorder) return;
+      sarvamListening = false;
+      micBtn.classList.remove("listening");
+      if (mediaRecorder.state === "recording") mediaRecorder.stop();
+    }
+
+    async function handleSarvamRecordingStopped() {
+      teardownAudioGraph();
+      if (!voiceChatActive) return; // user cancelled via stopVoiceChatSarvam
+      if (!hasHeardSpeech || !audioChunks.length) {
+        // Nothing usable was recorded — go back to idle rather than
+        // sending an empty/near-silent clip to the STT API.
+        activeSphere().setState("idle");
+        if (voiceChatActive) startSarvamRecording();
+        return;
+      }
+
+      activeSphere().setState("thinking"); // transcribing, not generating yet
+      const blob = new Blob(audioChunks, { type: audioChunks[0].type || "audio/webm" });
+      const formData = new FormData();
+      formData.append("audio", blob, "voice-input.webm");
+
+      try {
+        const res = await fetch("/api/stt", { method: "POST", body: formData });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          showMicError(data.error || `transcription failed (${res.status})`);
+          activeSphere().setState("idle");
+          setVoiceChatUI(false);
+          return;
+        }
+        if (!data.transcript) {
+          // Transcribed successfully but got nothing (e.g. silence Sarvam
+          // itself couldn't parse) — same graceful non-dead-end handling
+          // as WebSpeech's "no-speech" error, not a hard failure.
+          activeSphere().setState("idle");
+          if (voiceChatActive) startSarvamRecording();
+          return;
+        }
+        composerInput.value = data.transcript;
+        sendMessage(data.transcript, true);
+      } catch (err) {
+        showMicError("couldn't reach the transcription service");
+        activeSphere().setState("idle");
+        setVoiceChatUI(false);
+      }
+    }
+
+    function stopVoiceChatSarvam() {
+      setVoiceChatUI(false);
+      window.speechSynthesis.cancel();
+      if (sarvamListening) stopSarvamRecording();
+      else teardownAudioGraph();
+      activeSphere().setState("idle");
+    }
+
+    micBtn.addEventListener("click", () => {
+      if (voiceChatActive) {
+        stopVoiceChatSarvam();
+        return;
+      }
+      setVoiceChatUI(true);
+      startSarvamRecording();
+    });
+
+    window.CindrixVoice = { startListening: startSarvamRecording, stopVoiceChat: stopVoiceChatSarvam };
+  }
+
+  // Resolve which provider to wire up. Defaults to Web Speech (matches
+  // pre-hackathon behavior exactly) if /api/config can't be reached at
+  // all, e.g. backend not running yet during frontend-only dev.
+  fetch("/api/config")
+    .then((res) => res.json())
+    .then((data) => { sttProvider = data.sttProvider || "webspeech"; })
+    .catch(() => { sttProvider = "webspeech"; })
+    .finally(() => {
+      if (sttProvider === "sarvam") setupSarvamProvider();
+      else setupWebSpeechProvider();
+    });
 
   // ---------- export ----------
 
@@ -1317,7 +1508,7 @@
       } else if (action === "voice") {
         if (!voiceChatActive) {
           setVoiceChatUI(true);
-          startListening();
+          window.CindrixVoice.startListening();
         }
       } else if (action === "coding") {
         fillComposer("Write code for");

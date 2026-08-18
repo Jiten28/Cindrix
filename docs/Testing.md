@@ -210,5 +210,73 @@ on having a real account.
 - [ ] No leftover "Idle / Thinking / Listening / Speaking" text label
       constantly visible under the orb — it should stay blank except for
       brief transient messages (mic errors, "Reading file…")
+- [ ] A transient Gemini `503`/`429` no longer shows raw error JSON in the
+      chat (e.g. `(Gemini error: 503 UNAVAILABLE. {'error': ...})`) for a
+      RAG-path answer (document upload or knowledge-base query) — it
+      should either quietly recover after a retry or show the friendly
+      "Cindrix hit a temporary issue…" message, never the raw text
+
+## 17. Hackathon track — STT provider, RAG, guardrails, retry, latency
+
+Everything here is new — automated-tested during development (see below
+for what "tested" means without a live `GOOGLE_API_KEY`/network in the
+sandbox this was built in), but not yet manually re-verified against the
+real Sarvam API, the real MSMARCO-XI dataset, or real Gemini traffic.
+**Do this section before relying on the hackathon submission.**
+
+### 17a. Automated coverage already done (no manual re-check needed)
+- [x] `app/rag/chunking.py` — all three strategies tested against the
+      real MSMARCO-XI row schema (verified against the live HF dataset
+      card, not assumed), including Devanagari sentence boundaries
+- [x] `app/rag/dataset.py` — fixture fallback tested (yields the
+      documented example rows, loudly logged as a fixture)
+- [x] `app/rag/vector_store.py` — exact search correctness + save/load
+      round-trip tested (numpy fallback backend — `faiss` isn't
+      installed in the sandbox this was built in)
+- [x] `app/ai/embeddings.py`'s `top_k_chunks()` — confirmed it now goes
+      through `VectorStore` and still returns correctly-ranked results
+- [x] `app/rag/ingest.py` — full pipeline (dataset → chunk → embed →
+      vector store → save) tested end-to-end against fixture data
+- [x] `app/rag/guardrails.py` — unsafe-input detection (including a
+      false-positive check: a legitimate safety question doesn't trip
+      it), off-topic screening, and the relevance-floor grounding check
+- [x] `app/ai/retry.py` — all four scenarios tested: transient-error
+      recovery, retry exhaustion → friendly message, non-transient error
+      → no wasted retry, mid-stream failure → graceful close (not hung)
+- [x] `app/agents/router.py`'s new `knowledge_base_rag` path — unsafe
+      decline, pre-ingest fallback to old behavior, correct
+      `detect_tool()` labeling, a well-grounded query answering from
+      retrieved KB context (confirmed the prompt actually contained the
+      retrieved passage, not just that *some* answer came back), and a
+      weak-grounding query declining **with Gemini never called at all**
+      (confirmed via mock assertion, not just output inspection)
+- [x] `app/rag/benchmark.py` — confirmed it correctly marks itself
+      `is_self_test` and refuses to claim `meets_target` when no real
+      `GOOGLE_API_KEY` is available, rather than reporting misleadingly
+      fast near-zero numbers as if they meant something
+
+### 17b. Needs a real environment (network + real API keys) — not done yet
+- [ ] Run `pip install -r requirements.txt` somewhere with network access
+      so `faiss-cpu` and `datasets` are actually installed — confirm the
+      log warnings about missing faiss/datasets *stop* appearing
+- [ ] `python -m app.rag.ingest` against the real `ai4bharat/MSMARCO-XI`
+      dataset (not the fixture) — confirm it streams real rows and
+      produces a real-sized index under `data/rag_index/`
+- [ ] Ask a question the indexed corpus should cover — confirm a grounded
+      answer citing/using retrieved passage content, not a generic one
+- [ ] Ask something clearly outside the corpus — confirm the honest
+      decline message, not a hallucinated answer
+- [ ] Set `STT_PROVIDER=sarvam` and a real `SARVAM_API_KEY` — record a
+      voice question, confirm it transcribes correctly and the sphere
+      states (listening → thinking → speaking) still work exactly as
+      they do on the WebSpeech path
+- [ ] Set `STT_PROVIDER=webspeech` (or leave unset) — confirm voice input
+      still works exactly as it did before this priority (regression
+      check for the dev/fallback path)
+- [ ] `python -m app.rag.benchmark` with a real `GOOGLE_API_KEY` — confirm
+      `is_self_test` is `false` and record the actual P50/P70/P100; if
+      P70 is over the 200ms target, note where the `stages_ms` breakdown
+      says the time is going (this is expected to need real tuning, not
+      something the harness itself can fix)
 
 ---

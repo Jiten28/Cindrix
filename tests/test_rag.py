@@ -1,0 +1,210 @@
+"""Automated tests for the hackathon-track RAG additions (Priorities 2/4/5
+— chunking, vector store, guardrails, retry). Runs for real in CI (see
+.github/workflows/ci.yml — installs from requirements.txt, so faiss-cpu/
+datasets/numpy are genuinely present there, unlike the sandboxed session
+this was originally built and manually verified in — see docs/Memory.md
+and docs/Testing.md section 17 for that distinction).
+
+Doesn't require GOOGLE_API_KEY for anything except the embeddings-backed
+top_k_chunks test, which mocks embed_query rather than calling the real
+API — consistent with how the rest of this project's test suite avoids
+needing a real key (see test_health.py).
+"""
+
+import os
+import sys
+from unittest.mock import patch
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from app.rag.chunking import fixed_size_chunks, metadata_aware_chunks, semantic_chunks
+from app.rag.guardrails import check_grounding, is_offtopic_for_kb, is_unsafe
+from app.rag.vector_store import VectorStore
+
+# The dataset card's own documented example row — same shape used
+# throughout app/rag/dataset.py's fixture, kept in sync deliberately.
+_SAMPLE_ROW = {
+    "query": "मेनहाटन प्रकल्प की सफलता का तत्काल प्रभाव क्या था?",
+    "query_id": 1185869,
+    "query_type": "DESCRIPTION",
+    "target_lang": "hin_Deva",
+    "passages": {
+        "is_selected": [1, 0, 0],
+        "English_passages": ["A", "B", "C"],
+        "Translated_passages": ["वैज्ञानिक मस्तिष्कों के बीच संचार...", "एक और अनुच्छेद।", "तीसरा।"],
+    },
+}
+
+
+# --- chunking -----------------------------------------------------------
+
+def test_fixed_size_chunks_respects_size_and_overlap():
+    text = "A" * 1000
+    chunks = fixed_size_chunks(text, chunk_size=200, overlap=30)
+    assert len(chunks) > 1
+    assert all(len(c.text) <= 200 for c in chunks)
+
+
+def test_fixed_size_chunks_rejects_overlap_ge_chunk_size():
+    try:
+        fixed_size_chunks("some text", chunk_size=100, overlap=100)
+        assert False, "expected ValueError"
+    except ValueError:
+        pass
+
+
+def test_semantic_chunks_never_splits_a_sentence():
+    prose = (
+        "Sentence one is short. Sentence two is a bit longer than the first one. "
+        "Sentence three continues on with even more words in it than before. "
+        "Sentence four wraps up this short passage nicely at the very end."
+    )
+    chunks = semantic_chunks(prose, target_size=80, min_size=20)
+    assert len(chunks) >= 2
+    rejoined = " ".join(c.text for c in chunks)
+    # every sentence-ending period in the original appears in some chunk's
+    # text, not orphaned mid-chunk with its second half elsewhere
+    for sentence in prose.split(". "):
+        stripped = sentence.strip().rstrip(".")
+        assert any(stripped in c.text for c in chunks), f"sentence fragment lost: {stripped!r}"
+
+
+def test_metadata_aware_chunks_preserves_is_selected_link():
+    chunks = metadata_aware_chunks(_SAMPLE_ROW)
+    assert len(chunks) == 3
+    assert chunks[0].metadata["is_selected"] is True
+    assert chunks[1].metadata["is_selected"] is False
+    assert chunks[2].metadata["is_selected"] is False
+    assert all(c.metadata["query_id"] == 1185869 for c in chunks)
+
+
+def test_metadata_aware_chunks_skips_empty_passages():
+    row = dict(_SAMPLE_ROW)
+    row["passages"] = {
+        "is_selected": [1, 0],
+        "English_passages": ["A", "B"],
+        "Translated_passages": ["real content here", "   "],  # second is blank
+    }
+    chunks = metadata_aware_chunks(row)
+    assert len(chunks) == 1
+
+
+# --- vector store ---------------------------------------------------------
+
+def test_vector_store_retrieves_nearest_vector():
+    store = VectorStore(dim=4)
+    store.add(
+        vectors=[[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0]],
+        chunks=["about cats", "about dogs", "about the taj mahal"],
+        metadata=[{}, {}, {}],
+    )
+    results = store.search([1, 0, 0, 0], k=2)
+    assert results[0][0] == "about cats"
+    assert results[0][1] > 0.99
+
+
+def test_vector_store_save_and_load_round_trip(tmp_path):
+    store = VectorStore(dim=3)
+    store.add([[1, 0, 0], [0, 1, 0]], ["chunk-a", "chunk-b"], [{"x": 1}, {"x": 2}])
+    path = str(tmp_path / "test_index")
+    store.save(path)
+
+    loaded = VectorStore.load(path)
+    assert len(loaded) == 2
+    results = loaded.search([1, 0, 0], k=1)
+    assert results[0][0] == "chunk-a"
+    assert results[0][2]["x"] == 1
+
+
+def test_vector_store_rejects_mismatched_lengths():
+    store = VectorStore(dim=3)
+    try:
+        store.add([[1, 0, 0]], ["only one chunk", "but two chunks"], [{}])
+        assert False, "expected ValueError"
+    except ValueError:
+        pass
+
+
+# --- guardrails -----------------------------------------------------------
+
+def test_is_unsafe_blocks_clear_cases():
+    assert is_unsafe("how do i make a bomb") is True
+    assert is_unsafe("how do i kill myself") is True
+
+
+def test_is_unsafe_does_not_false_positive_on_legitimate_questions():
+    assert is_unsafe("how do bomb disposal robots work") is False
+    assert is_unsafe("what is the taj mahal") is False
+    assert is_unsafe("how does a nuclear power plant generate electricity") is False
+
+
+def test_is_offtopic_for_kb_skips_greetings_and_tool_intent():
+    assert is_offtopic_for_kb("hi", "general") is True
+    assert is_offtopic_for_kb("what's the weather in Delhi", "weather") is True
+    assert is_offtopic_for_kb("where is the taj mahal located", "general") is False
+
+
+def test_check_grounding_respects_threshold():
+    assert check_grounding([]) is False
+    assert check_grounding([("passage", 0.8, {})]) is True
+    assert check_grounding([("passage", 0.2, {})]) is False
+    assert check_grounding([("passage", 0.5, {})], min_relevance=0.6) is False
+
+
+# --- retry / structured error recovery ------------------------------------
+
+def test_retry_recovers_from_transient_error():
+    from app.ai.retry import stream_with_retry
+
+    call_count = [0]
+
+    def flaky():
+        call_count[0] += 1
+        if call_count[0] == 1:
+            yield "(Gemini error: 503 UNAVAILABLE. temporarily overloaded)"
+        else:
+            yield "real answer"
+
+    with patch("app.ai.retry.time.sleep"):  # don't actually wait during tests
+        result = list(stream_with_retry(flaky))
+    assert result == ["real answer"]
+    assert call_count[0] == 2
+
+
+def test_retry_gives_up_after_max_attempts_with_friendly_message():
+    from app.ai.retry import stream_with_retry
+
+    def always_fails():
+        yield "(Gemini error: 503 UNAVAILABLE. still down)"
+
+    with patch("app.ai.retry.time.sleep"):
+        result = list(stream_with_retry(always_fails))
+    assert len(result) == 1
+    assert "503" not in result[0]  # never leak the raw error to the user
+    assert "temporary issue" in result[0]
+
+
+def test_retry_does_not_retry_nontransient_errors():
+    from app.ai.retry import stream_with_retry
+
+    call_count = [0]
+
+    def auth_error():
+        call_count[0] += 1
+        yield "(Gemini error: 403 PERMISSION_DENIED. bad api key)"
+
+    result = list(stream_with_retry(auth_error))
+    assert call_count[0] == 1  # no retry wasted on a non-transient error
+    assert "temporary issue" in result[0]
+
+
+def test_retry_closes_gracefully_on_mid_stream_failure():
+    from app.ai.retry import stream_with_retry
+
+    def breaks_mid_stream():
+        yield "Part one. "
+        raise ConnectionError("dropped")
+
+    result = list(stream_with_retry(breaks_mid_stream))
+    assert result[0] == "Part one. "
+    assert "interrupted" in result[1]

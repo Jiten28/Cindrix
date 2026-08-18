@@ -5,9 +5,116 @@
 > Purpose: avoid re-reading the whole codebase or re-deriving decisions already
 > made.
 
-Last updated: end of Phase 4 (internship track); Hackathon Phase 1 in progress (see below)
+Last updated: end of Phase 4 (internship track); Hackathon Phase 2 in progress (see below)
 
 ---
+
+## Hackathon Track — Hackathon Phase 2 (Compliance: STT, RAG, Guardrails, Hardening)
+
+New, separate from the Phase 1–5 internship roadmap below and from
+Hackathon Phase 1 above. Triggered by finally obtaining the hackathon's
+official task brief (#RAGInGoa Task #2, deadline Aug 22 2026 11:59 PM
+IST), which revealed everything it grades was either unbuilt or
+non-compliant. Phase 4 work (i18n, mobile responsiveness) was paused per
+explicit instruction to focus entirely on this until the deadline.
+
+**Five priorities, all built and unit-tested this session** (see
+`docs/Testing.md`'s new section 17 for exactly what "tested" means here —
+short version: real logic tested against real schemas/scenarios with
+mocked network calls, since this session had neither a `GOOGLE_API_KEY`
+nor general network access; section 17b lists what still needs a real
+environment before the submission is actually verified end-to-end):
+
+**Priority 1 — STT provider compliance.** Web Speech API doesn't qualify
+for the hackathon (Sarvam or ElevenLabs required); it stays as the
+default dev/fallback path rather than being ripped out.
+`STT_PROVIDER=sarvam` (+ a real `SARVAM_API_KEY`) switches to
+`app/ai/stt.py`, calling Sarvam's `/speech-to-text` REST endpoint
+(`saaras:v3`). Sarvam picked over ElevenLabs for its Indic-language
+focus, matching the MSMARCO-XI corpus. Endpoint/auth/param details were
+looked up directly against Sarvam's live docs while building this, not
+recalled from training data. Frontend (`app.js`) got a full second voice-
+input implementation (MediaRecorder + a Web Audio silence-detector, since
+raw audio recording doesn't get free end-of-speech detection the way
+Web Speech API does) behind a provider switch fetched from a new
+`/api/config` endpoint — both providers feed the exact same
+`sendMessage(transcript, true)` call downstream.
+
+**Priority 2 — Chunking + vector DB.** `app/rag/chunking.py`: three
+strategies (fixed-size, semantic/sentence-packed, metadata-aware — the
+last one is what's actually used for MSMARCO-XI, since its passages
+arrive pre-segmented). `app/rag/dataset.py`: streams the real dataset via
+HF `datasets`, capped/disclosed scope (`RAG_INGEST_MAX_ROWS`, default
+2000 — ingesting all 10M+ rows/language isn't a realistic hackathon-
+timeline operation), with a fixture fallback (built from the dataset
+card's own documented example) when `datasets` isn't installed.
+`app/rag/vector_store.py`: FAISS-backed (numpy exact-search fallback when
+`faiss` isn't installed), replaces the old brute-force loop in
+`embeddings.py`'s `top_k_chunks()`. `app/rag/ingest.py`: ties it together,
+runnable via `python -m app.rag.ingest`. Wired into
+`app/agents/router.py` as a new `knowledge_base_rag` path — see
+`Architecture.md`'s new section for the full writeup, including a
+product-behavior tradeoff worth reading before the internship demo (once
+the KB index exists, general queries that don't ground well now decline
+rather than falling back to generic chat — flagged there, not buried).
+
+**Priority 3 — Latency harness.** `app/rag/benchmark.py`: P50/P70/P100
+across embed-query/vector-retrieval/generation stages plus end-to-end,
+target <200ms. Deliberately excludes ingest-time chunking from the
+per-query number (that's a one-time cost, not something a live query
+pays — see Architecture.md for why a literal reading would be bad
+engineering). **Honest, not fabricated**: with no `GOOGLE_API_KEY` in
+this session's sandbox, the harness marks its own output
+`"is_self_test": true` and refuses to claim `meets_target` — real numbers
+need `python -m app.rag.benchmark` run with a real key, not done yet.
+
+**Priority 4 — Guardrails.** `app/rag/guardrails.py`: unsafe-input
+blocking (tested for false positives too — a legitimate safety question
+doesn't trip it), off-topic screening (tool-intent/greetings skip KB
+retrieval entirely rather than getting force-declined), and a grounding
+check (`RAG_MIN_RELEVANCE`, default 0.55 cosine) that — verified by
+test, not just by reading the code — actually prevents Gemini from being
+called at all when retrieval comes back weak, rather than just hoping a
+prompt instruction stops it from improvising.
+
+**Priority 5 — Harness hardening.** `app/ai/retry.py`: wraps both
+RAG-serving Gemini calls (`document_rag`, `knowledge_base_rag`) with
+retry + structured recovery — scoped to the RAG path specifically, not
+every Gemini call site, per the instruction ("that's what's graded").
+Built directly against a real production bug: a transient `503
+UNAVAILABLE` was leaking as raw `(Gemini error: 503 UNAVAILABLE.
+{'error': ...})` text in the chat (this was caught live, in a screenshot
+of the deployed app, not hypothetically). Tested all four shapes this
+needs to handle: recovers transparently on a transient error, gives up
+gracefully after exhausting retries, doesn't waste a retry on a
+non-transient error, and closes cleanly (no hang, no duplicate content)
+if a failure happens mid-stream after real content already went out.
+
+**Docs touched this session:** this entry; `Architecture.md` (new
+"Retrieval, Vector Store & Guardrails" section — dataset, all three
+chunking strategies, vector store choice, router wiring including the
+flagged product tradeoff, guardrails, retry, latency harness; Voice I/O
+section updated for the STT provider switch); `Testing.md` (new section
+17, split into what's automated-tested vs. what needs a real environment
+before trusting the submission); `.env.example` (new STT/RAG config vars,
+`GOOGLE_CSE_ID` deliberately left untouched per explicit instruction).
+
+**What's NOT done yet, going into the next session:**
+- Nothing in section 17b of `Testing.md` has been run against a real
+  environment — no real Sarvam call, no real MSMARCO-XI ingest (only the
+  2-row fixture), no real Gemini-backed latency numbers. This is the
+  single most important gap before the Aug 22 submission — the code is
+  real and tested, but "tested against mocks in a sandbox with no
+  network" is not the same claim as "verified against the live
+  hackathon stack."
+- `faiss-cpu` and `datasets` need `pip install -r requirements.txt` run
+  somewhere with network access — both are soft-imported with working
+  fallbacks, but the fallbacks are explicitly not what "real vector
+  store"/"the mandated dataset" mean for grading purposes.
+- Once section 17b passes for real: resume the paused Phase 4 work
+  (i18n, mobile responsiveness) and the still-earlier-paused Phase 3
+  interface polish (sphere mouse-interactivity, light/dark theme) — see
+  `Phases.md`'s Hackathon Track section for the current phase order.
 
 ## Hackathon Track — Hackathon Phase 1 (Rename + Core Voice Pipeline)
 

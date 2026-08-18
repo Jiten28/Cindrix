@@ -26,6 +26,7 @@ from werkzeug.utils import secure_filename
 
 from app.agents.router import detect_tool, stream_route_query
 from app.ai.embeddings import embed_texts
+from app.ai.stt import transcribe_audio
 from app.analytics import events
 from app.auth.current_user import current_user, current_user_id
 from app.config import settings
@@ -53,6 +54,34 @@ def _attachment_key(user_id: str, conversation_id: str | None) -> str:
 @bp.route("/models", methods=["GET"])
 def models():
     return jsonify(settings.AVAILABLE_MODELS)
+
+
+@bp.route("/config", methods=["GET"])
+def config():
+    """Tells the frontend which STT provider is live, so app.js can switch
+    between the browser-native Web Speech API path (no server involvement)
+    and the record-audio-and-POST-to-/api/stt Sarvam path (see
+    docs/Architecture.md's STT Provider section). Never exposes the actual
+    API key — only the provider name."""
+    return jsonify({"sttProvider": settings.STT_PROVIDER})
+
+
+@bp.route("/stt", methods=["POST"])
+def stt():
+    """Sarvam STT path only — reached when STT_PROVIDER=sarvam (see
+    /api/config above and frontend/js/app.js). The Web Speech API path
+    never hits the backend at all, same as before this priority."""
+    if settings.STT_PROVIDER != "sarvam":
+        return jsonify({"ok": False, "error": "Server-side STT is not enabled (STT_PROVIDER != sarvam)."}), 400
+    if "audio" not in request.files:
+        return jsonify({"ok": False, "error": "No audio file provided."}), 400
+    audio_file = request.files["audio"]
+    audio_bytes = audio_file.read()
+    if not audio_bytes:
+        return jsonify({"ok": False, "error": "Empty audio recording."}), 400
+    result = transcribe_audio(audio_bytes, audio_file.mimetype or "audio/webm", audio_file.filename or "audio.webm")
+    status = 200 if result["ok"] else 502
+    return jsonify(result), status
 
 
 @bp.route("/chat", methods=["POST"])
