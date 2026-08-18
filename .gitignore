@@ -32,3 +32,6 @@ Thumbs.db
 # Editors
 .vscode/
 .idea/
+
+#
+data/rag_index/
