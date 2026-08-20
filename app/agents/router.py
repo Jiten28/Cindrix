@@ -20,9 +20,11 @@ ends of this — an unsafe-input check up front, and a grounding check on
 the retrieved passages before answering from them, declining honestly
 rather than letting Gemini improvise from weak/irrelevant context. Both
 RAG-serving generation calls (this new path and the existing document_rag
-one) go through app/ai/retry.py's stream_with_retry for transient-error
-recovery — see that module's docstring for the real 503 this was built
-against.
+one) go through app/ai/retry.py's stream_generation() — Groq primary,
+Gemini fallback, retried and error-recovered at each step — see that
+module's docstring for the real 503 this was originally built against and
+docs/Architecture.md's "Generation Provider Chain" section for the
+Groq-primary reasoning.
 """
 
 import logging
@@ -31,7 +33,7 @@ from typing import Dict, Generator, List, Optional
 
 from app.ai.embeddings import embed_query, top_k_chunks
 from app.ai.gemini_client import call_gemini, stream_gemini, stream_gemini_vision
-from app.ai.retry import stream_with_retry
+from app.ai.retry import stream_generation
 from app.config import settings
 from app.memory.attachment_store import get_active
 from app.memory.conversation_store import recent_context
@@ -218,8 +220,9 @@ def stream_route_query(
                 f"Document excerpts:\n{context_block}\n\n"
                 f"User question: {user_input}\nCindrix:"
             )
-            # Priority 5: retry-wrapped — this is graded RAG output.
-            yield from stream_with_retry(lambda: stream_gemini(prompt, model=model))
+            # Priority 5 (retry) + Groq/Gemini fallback chain: this is
+            # graded RAG output — see app/ai/retry.py's stream_generation.
+            yield from stream_generation(prompt, gemini_model=model)
             return
 
     # ---- knowledge-base RAG (MSMARCO-XI, hackathon track) --------------
@@ -245,8 +248,9 @@ def stream_route_query(
                     f"Knowledge base excerpts:\n{context_block}\n\n"
                     f"User question: {user_input}\nCindrix:"
                 )
-                # Priority 5: retry-wrapped — this is graded RAG output.
-                yield from stream_with_retry(lambda: stream_gemini(prompt, model=model))
+                # Priority 5 (retry) + Groq/Gemini fallback chain: this is
+                # graded RAG output — see app/ai/retry.py's stream_generation.
+                yield from stream_generation(prompt, gemini_model=model)
                 return
             # Retrieval ran but nothing cleared the relevance floor —
             # Priority 4: decline visibly rather than let Gemini answer

@@ -240,9 +240,16 @@ real Sarvam API, the real MSMARCO-XI dataset, or real Gemini traffic.
 - [x] `app/rag/guardrails.py` — unsafe-input detection (including a
       false-positive check: a legitimate safety question doesn't trip
       it), off-topic screening, and the relevance-floor grounding check
-- [x] `app/ai/retry.py` — all four scenarios tested: transient-error
-      recovery, retry exhaustion → friendly message, non-transient error
-      → no wasted retry, mid-stream failure → graceful close (not hung)
+- [x] `app/ai/retry.py` — all four single-provider retry scenarios
+      tested: transient-error recovery, retry exhaustion → friendly
+      message, non-transient error → no wasted retry, mid-stream failure
+      → graceful close (not hung) — plus, separately, the Groq→Gemini
+      fallback chain: Groq succeeds (Gemini never called), Groq exhausts
+      retries (Gemini called and used), both fail (clean error, no raw
+      leak from either), and a non-transient Groq error still falls back
+      without wasting a retry. A regression test also confirms the
+      original single-provider `stream_with_retry()` is byte-for-byte
+      unaffected by the refactor that added the fallback chain on top of it.
 - [x] `app/agents/router.py`'s new `knowledge_base_rag` path — unsafe
       decline, pre-ingest fallback to old behavior, correct
       `detect_tool()` labeling, a well-grounded query answering from
@@ -260,8 +267,19 @@ real Sarvam API, the real MSMARCO-XI dataset, or real Gemini traffic.
       so `faiss-cpu` and `datasets` are actually installed — confirm the
       log warnings about missing faiss/datasets *stop* appearing
 - [ ] `python -m app.rag.ingest` against the real `ai4bharat/MSMARCO-XI`
-      dataset (not the fixture) — confirm it streams real rows and
-      produces a real-sized index under `data/rag_index/`
+      dataset (not the fixture) — confirm the "falling back to FIXTURE"
+      log line is gone and real row counts appear. **Specifically watch
+      for the `[rag.dataset]` log line about zero matches / distinct
+      `target_lang` values seen** — `hin_Deva` for Hindi is
+      convention-based (confirmed against sibling AI4Bharat datasets),
+      not confirmed against a literal fetched MSMARCO-XI row (tooling
+      limits in the sandbox this was fixed in couldn't complete that
+      specific check — see `Memory.md`'s Hackathon Phase 3 entry). If
+      the log shows zero matches, it'll also show the actual values
+      present — fix `RAG_DATASET_LANGUAGE` or `LANGUAGE_CODE_MAP`'s "hi"
+      entry in `app/rag/dataset.py` to match and re-run; that's expected
+      to be a one-line fix if `hin_Deva` turns out wrong, not a deeper
+      problem
 - [ ] Ask a question the indexed corpus should cover — confirm a grounded
       answer citing/using retrieved passage content, not a generic one
 - [ ] Ask something clearly outside the corpus — confirm the honest
@@ -273,10 +291,24 @@ real Sarvam API, the real MSMARCO-XI dataset, or real Gemini traffic.
 - [ ] Set `STT_PROVIDER=webspeech` (or leave unset) — confirm voice input
       still works exactly as it did before this priority (regression
       check for the dev/fallback path)
-- [ ] `python -m app.rag.benchmark` with a real `GOOGLE_API_KEY` — confirm
-      `is_self_test` is `false` and record the actual P50/P70/P100; if
-      P70 is over the 200ms target, note where the `stages_ms` breakdown
-      says the time is going (this is expected to need real tuning, not
-      something the harness itself can fix)
+- [ ] Set both `GROQ_API_KEY` and `GOOGLE_API_KEY` for real — ask a
+      question that should hit the knowledge-base RAG path, confirm the
+      `[retry] response served by Groq (primary)` log line appears (not
+      an immediate fallback to Gemini) and the answer is coherent
+- [ ] With only `GOOGLE_API_KEY` set (no `GROQ_API_KEY`, or an invalid
+      one) — confirm the response still comes back correctly via the
+      Gemini fallback, and the log shows why Groq was skipped/failed
+- [ ] `python -m app.rag.benchmark` with real `GROQ_API_KEY` AND
+      `GOOGLE_API_KEY` — confirm `is_self_test` is `false`,
+      `provider_config_note` is `null`, and record the actual
+      P50/P70/P100 plus the `served_by_breakdown` (should show mostly/all
+      "Groq (primary)" if Groq is healthy — if it shows a lot of "Gemini
+      (fallback)" instead, that's worth investigating before trusting the
+      Groq-primary latency story). If P70 is over the 200ms target, note
+      where the `stages_ms` breakdown says the time is going (this is
+      expected to need real tuning, not something the harness itself can
+      fix) — and note whether Groq-primary actually got closer to target
+      than a Gemini-only run would have, since that's the whole premise
+      for this ordering
 
 ---

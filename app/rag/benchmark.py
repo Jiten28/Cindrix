@@ -33,7 +33,7 @@ from typing import Dict, List, Optional
 
 from app.agents.router import get_kb_store
 from app.ai.embeddings import embed_query
-from app.ai.gemini_client import stream_gemini
+from app.ai.retry import stream_generation
 from app.config import settings
 from app.rag import guardrails
 
@@ -56,6 +56,26 @@ class QueryTiming:
     generate_ms: float
     total_ms: float
     grounded: bool
+    served_by: Optional[str] = None  # "Groq (primary)" / "Gemini (fallback)" / None if ungrounded
+
+
+class _ProviderCapture(logging.Handler):
+    """Temporarily attached to app.ai.retry's logger for the duration of
+    one generation call, to capture which provider actually served the
+    response — stream_generation() only logs this (production doesn't
+    need it as a return value), so the benchmark reads it off the log
+    record rather than changing that function's public interface."""
+
+    def __init__(self):
+        super().__init__()
+        self.served_by: Optional[str] = None
+
+    def emit(self, record):
+        msg = record.getMessage()
+        if "response served by" in msg:
+            # "[retry] response served by Groq (primary)" or
+            # "... by Gemini (fallback, after Groq failed)"
+            self.served_by = msg.split("response served by", 1)[1].strip()
 
 
 def percentile(values: List[float], pct: float) -> float:
@@ -82,11 +102,19 @@ def time_one_query(query: str, model: Optional[str] = None) -> QueryTiming:
     t2 = time.perf_counter()
 
     grounded = guardrails.check_grounding(retrieved)
+    served_by = None
     if grounded:
         context_block = "\n\n---\n\n".join(text for text, _s, _m in retrieved)
         prompt = f"Answer using only this context:\n{context_block}\n\nQuestion: {query}\nAnswer:"
-        for _chunk in stream_gemini(prompt, model=model):
-            pass  # timing generation, not collecting the text here
+        capture = _ProviderCapture()
+        retry_logger = logging.getLogger("app.ai.retry")
+        retry_logger.addHandler(capture)
+        try:
+            for _chunk in stream_generation(prompt, gemini_model=model):
+                pass  # timing generation, not collecting the text here
+        finally:
+            retry_logger.removeHandler(capture)
+        served_by = capture.served_by
     t3 = time.perf_counter()
 
     return QueryTiming(
@@ -96,6 +124,7 @@ def time_one_query(query: str, model: Optional[str] = None) -> QueryTiming:
         generate_ms=(t3 - t2) * 1000,
         total_ms=(t3 - t0) * 1000,
         grounded=grounded,
+        served_by=served_by,
     )
 
 
@@ -108,21 +137,39 @@ def run_benchmark(queries: Optional[List[str]] = None, model: Optional[str] = No
     retrieves = [t.retrieve_ms for t in timings]
     generates = [t.generate_ms for t in timings]
 
-    is_self_test = not settings.GOOGLE_API_KEY
+    is_self_test = not settings.GOOGLE_API_KEY and not settings.GROQ_API_KEY
     p70_total = percentile(totals, 70)
+    served_by_counts: Dict[str, int] = {}
+    for t in timings:
+        if t.served_by:
+            served_by_counts[t.served_by] = served_by_counts.get(t.served_by, 0) + 1
 
     return {
         "target_ms": 200,
         "is_self_test": is_self_test,
         "self_test_note": (
-            "GOOGLE_API_KEY is not set — embed_query/stream_gemini returned "
-            "immediately without a real network call. These numbers measure "
-            "the harness's own overhead, NOT production latency. Set "
-            "GOOGLE_API_KEY and re-run before reporting these numbers as real."
+            "Neither GROQ_API_KEY nor GOOGLE_API_KEY is set — embed_query/"
+            "stream_generation returned immediately without a real network "
+            "call. These numbers measure the harness's own overhead, NOT "
+            "production latency. Set both and re-run before reporting these "
+            "numbers as real."
             if is_self_test else None
+        ),
+        "provider_config_note": (
+            "Neither GROQ_API_KEY nor GOOGLE_API_KEY is set."
+            if not settings.GROQ_API_KEY and not settings.GOOGLE_API_KEY else
+            "GROQ_API_KEY is not set — every call skips straight to the "
+            "Gemini fallback, so this doesn't measure Groq at all."
+            if not settings.GROQ_API_KEY else
+            "GOOGLE_API_KEY is not set — if Groq ever fails, there's no "
+            "fallback to measure, and any Groq failure becomes a hard error "
+            "instead of a graceful fallback."
+            if not settings.GOOGLE_API_KEY else
+            None
         ),
         "query_count": len(queries),
         "grounded_count": sum(1 for t in timings if t.grounded),
+        "served_by_breakdown": served_by_counts,
         "statistical_note": (
             f"{len(queries)} test queries — enough to sanity-check where time "
             f"goes, not a statistically rigorous P50/P70/P100 in the "
@@ -155,8 +202,12 @@ def main() -> None:
     print(f"\nSaved to {args.out}")
 
     if report["is_self_test"]:
-        print("\n⚠️  SELF-TEST MODE — no GOOGLE_API_KEY set. Not a real latency number.")
+        print("\n⚠️  SELF-TEST MODE — no GROQ_API_KEY/GOOGLE_API_KEY set. Not a real latency number.")
         return
+    if report["provider_config_note"]:
+        print(f"\n⚠️  {report['provider_config_note']}")
+    if report["served_by_breakdown"]:
+        print("\nProvider breakdown:", report["served_by_breakdown"])
     p70 = report["end_to_end_ms"]["p70"]
     if report["meets_target"]:
         print(f"\n✅ P70 end-to-end = {p70:.1f}ms — meets the <200ms target.")

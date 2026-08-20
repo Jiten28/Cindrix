@@ -208,3 +208,76 @@ def test_retry_closes_gracefully_on_mid_stream_failure():
     result = list(stream_with_retry(breaks_mid_stream))
     assert result[0] == "Part one. "
     assert "interrupted" in result[1]
+
+
+# --- Groq-primary / Gemini-fallback generation provider chain -------------
+# See app/ai/retry.py's stream_with_fallback/stream_generation and
+# docs/Architecture.md's "Generation Provider Chain" section. Groq is
+# primary (published-benchmark rationale — see that doc section for the
+# honest caveat that this project's own benchmark.py hasn't confirmed it
+# yet), Gemini is the fallback if Groq exhausts its retry budget.
+
+def test_fallback_chain_groq_succeeds_gemini_never_called():
+    from app.ai.retry import stream_with_fallback
+
+    def groq_ok():
+        yield "Groq answer."
+
+    def gemini_should_not_be_called():
+        raise AssertionError("Gemini should not have been called when Groq succeeds")
+        yield "unused"  # pragma: no cover — unreachable, keeps this a generator
+
+    result = list(stream_with_fallback(groq_ok, gemini_should_not_be_called, "Groq", "Gemini"))
+    assert result == ["Groq answer."]
+
+
+def test_fallback_chain_groq_exhausts_retries_then_gemini_used():
+    from app.ai.retry import stream_with_fallback
+
+    groq_call_count = [0]
+
+    def groq_always_fails():
+        groq_call_count[0] += 1
+        yield "(Groq error: 503 UNAVAILABLE. overloaded)"
+
+    def gemini_ok():
+        yield "Gemini fallback answer."
+
+    with patch("app.ai.retry.time.sleep"):
+        result = list(stream_with_fallback(groq_always_fails, gemini_ok, "Groq", "Gemini"))
+    assert result == ["Gemini fallback answer."]
+    assert groq_call_count[0] == 3  # 1 initial + 2 retries, all on Groq, before falling back
+
+
+def test_fallback_chain_both_providers_fail_clean_error():
+    from app.ai.retry import stream_with_fallback
+
+    def groq_fails():
+        yield "(Groq error: 503 UNAVAILABLE. still down)"
+
+    def gemini_fails():
+        yield "(Gemini error: 503 UNAVAILABLE. also down)"
+
+    with patch("app.ai.retry.time.sleep"):
+        result = list(stream_with_fallback(groq_fails, gemini_fails, "Groq", "Gemini"))
+    assert len(result) == 1
+    assert "503" not in result[0]  # never leak either provider's raw error
+    assert "couldn't reach either" in result[0]
+
+
+def test_fallback_chain_nontransient_primary_error_still_falls_back():
+    from app.ai.retry import stream_with_fallback
+
+    groq_call_count = [0]
+
+    def groq_nontransient_error():
+        groq_call_count[0] += 1
+        yield "(Groq error: 401 invalid api key)"
+
+    def gemini_ok():
+        yield "Gemini answered instead."
+
+    result = list(stream_with_fallback(groq_nontransient_error, gemini_ok, "Groq", "Gemini"))
+    assert result == ["Gemini answered instead."]
+    assert groq_call_count[0] == 1  # non-transient — no retry wasted, straight to fallback
+

@@ -1,0 +1,80 @@
+{
+  "target_ms": 200,
+  "is_self_test": false,
+  "self_test_note": null,
+  "provider_config_note": null,
+  "query_count": 5,
+  "grounded_count": 0,
+  "served_by_breakdown": {},
+  "statistical_note": "5 test queries — enough to sanity-check where time goes, not a statistically rigorous P50/P70/P100 in the large-sample sense. Widen DEFAULT_TEST_QUERIES for a stronger claim.",
+  "stages_ms": {
+    "embed_query": {
+      "p50": 478.8325999979861,
+      "p70": 505.4913999920245,
+      "p100": 1015.0816999957897
+    },
+    "vector_retrieval": {
+      "p50": 0.000100000761449337,
+      "p70": 0.000200001522898674,
+      "p100": 0.000200001522898674
+    },
+    "generation": {
+      "p50": 0.001400010660290718,
+      "p70": 0.001500011421740055,
+      "p100": 0.001800013706088066
+    }
+  },
+  "end_to_end_ms": {
+    "p50": 478.834099980304,
+    "p70": 505.49310000496916,
+    "p100": 1015.0837000110187
+  },
+  "meets_target": false,
+  "per_query": [
+    {
+      "query": "ताजमहल कहाँ स्थित है?",
+      "embed_ms": 1015.0816999957897,
+      "retrieve_ms": 0.000200001522898674,
+      "generate_ms": 0.001800013706088066,
+      "total_ms": 1015.0837000110187,
+      "grounded": false,
+      "served_by": null
+    },
+    {
+      "query": "मेनहाटन प्रकल्प की सफलता का तत्काल प्रभाव क्या था?",
+      "embed_ms": 505.4913999920245,
+      "retrieve_ms": 0.000200001522898674,
+      "generate_ms": 0.001500011421740055,
+      "total_ms": 505.49310000496916,
+      "grounded": false,
+      "served_by": null
+    },
+    {
+      "query": "भारत की राजधानी क्या है?",
+      "embed_ms": 474.06629999750294,
+      "retrieve_ms": 0.000100000761449337,
+      "generate_ms": 0.001400010660290718,
+      "total_ms": 474.0678000089247,
+      "grounded": false,
+      "served_by": null
+    },
+    {
+      "query": "आगरा शहर के बारे में बताइए",
+      "embed_ms": 476.91900000791065,
+      "retrieve_ms": 0.000100000761449337,
+      "generate_ms": 0.001100008375942707,
+      "total_ms": 476.92020001704805,
+      "grounded": false,
+      "served_by": null
+    },
+    {
+      "query": "विश्व युद्ध कब समाप्त हुआ?",
+      "embed_ms": 478.8325999979861,
+      "retrieve_ms": 0.000100000761449337,
+      "generate_ms": 0.0013999815564602613,
+      "total_ms": 478.834099980304,
+      "grounded": false,
+      "served_by": null
+    }
+  ]
+}

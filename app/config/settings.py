@@ -17,6 +17,17 @@ GOOGLE_API_LOCATION: str = os.getenv("GOOGLE_API_LOCATION", "us").strip()
 OPENWEATHER_API_KEY: str = os.getenv("OPENWEATHER_API_KEY", "").strip()
 HISTORY_FILE: str = os.getenv("HISTORY_FILE", "data/conv_history.json").strip()
 
+# --- Groq (primary generation provider for RAG-serving calls) -------------
+# See docs/Architecture.md's "Generation Provider Chain" section for the
+# full reasoning. Groq primary + Gemini fallback, both required — this
+# isn't optional the way TAVILY_API_KEY/OPENWEATHER_API_KEY above are.
+GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "").strip()
+# NOT llama-3.3-70b-versatile — Groq deprecated it (announced June 17,
+# 2026, shutdown Aug 16, 2026, confirmed against Groq's own live
+# deprecations page while building this). openai/gpt-oss-120b is their
+# current recommended replacement and flagship production model.
+GROQ_MODEL: str = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b").strip()
+
 GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-flash-latest").strip()
 GEMINI_EMBEDDING_MODEL: str = os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-001").strip()
 
@@ -98,7 +109,9 @@ def warn_if_missing() -> list[str]:
     """
     warnings = []
     if not GOOGLE_API_KEY:
-        warnings.append("GOOGLE_API_KEY not set — Gemini, and general web search via Gemini's Google Search grounding, won't work.")
+        warnings.append("GOOGLE_API_KEY not set — Gemini (fallback generation provider), and general web search via Gemini's Google Search grounding, won't work.")
+    if not GROQ_API_KEY:
+        warnings.append("GROQ_API_KEY not set — Groq (primary generation provider) won't work; RAG-serving calls will fall straight to Gemini every time instead of Groq-then-Gemini.")
     if not TAVILY_API_KEY:
         warnings.append("TAVILY_API_KEY not set — image search ('image of X') disabled; general web search is unaffected (uses Gemini directly).")
     if not OPENWEATHER_API_KEY:

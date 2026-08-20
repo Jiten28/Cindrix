@@ -5,13 +5,102 @@
 > Purpose: avoid re-reading the whole codebase or re-deriving decisions already
 > made.
 
-Last updated: end of Phase 4 (internship track); Hackathon Phase 2 in progress (see below)
+> **Canonical URLs (as of Hackathon Phase 3 — see that entry below for
+> when/why these were fixed):** GitHub repo is
+> `https://github.com/Jiten28/Cindrix` — NOT `Nimbus-AI`, an earlier
+> project name from before the CINDRIX rename. Live deployment is
+> `https://cindrix-ai.onrender.com/`. If any doc, comment, or generated
+> output reintroduces `Nimbus-AI` or a different Render URL, that's stale
+> — fix it back to these two values rather than trusting what's already
+> written elsewhere as a source of truth.
+
+Last updated: end of Phase 4 (original roadmap); Hackathon Phase 4 in progress (see below)
 
 ---
 
+## Hackathon Track — Hackathon Phase 4 (Groq-Primary Generation Provider Chain)
+
+New. Built entirely fresh — a prior message assumed Groq-as-fallback
+already existed from "Task 3" and asked to reverse its order; that
+turned out to be a false premise (confirmed by grep: zero mentions of
+"groq" anywhere in the codebase before this entry). Flagged that
+mismatch rather than trying to "reverse" code that didn't exist, then
+built the real target state directly: **Groq primary, Gemini fallback**.
+
+**Why Groq primary:** based on Groq's generally-published LPU-hardware
+inference speed vs. Gemini Flash (independent third-party benchmarks) —
+explicitly NOT based on this project's own `benchmark.py`, which has
+only ever produced `is_self_test` placeholder output so far (no real
+`GROQ_API_KEY`/`GOOGLE_API_KEY` in any sandboxed session yet). Confirming
+this holds for the actual pipeline (small Indic-text prompts, this exact
+retrieval-then-generate shape) is explicit follow-up, not assumed true —
+see `Testing.md` §17b.
+
+**What was built:**
+- `app/ai/groq_client.py` — new. Groq's OpenAI-compatible
+  `/chat/completions` endpoint, hand-rolled via `requests` (no new SDK
+  dependency, same pattern as `app/ai/stt.py`'s Sarvam call). Default
+  model is `openai/gpt-oss-120b`, **not** `llama-3.3-70b-versatile` as
+  originally suggested — checked Groq's live deprecations page/changelog
+  while building this and found that model deprecated (announced June 17
+  2026, shutdown Aug 16 2026 — already past). Same class of trap this
+  project already got burned by once with `gemini-1.5-flash` — verify
+  current model IDs against live docs, don't trust a suggested example
+  model name at face value.
+- `app/ai/retry.py` — restructured, not just extended. The old
+  single-provider retry mechanic got factored into a reusable internal
+  helper (`_attempt_with_retry`) so it's shared, not duplicated, between
+  the still-present, still-unchanged-behavior `stream_with_retry()`
+  (kept for anything that wants retry without fallback — verified via a
+  regression test that its behavior is bit-for-bit identical to before)
+  and the new `stream_with_fallback()`/`stream_generation()` — Groq with
+  its own retry budget, then Gemini with its own retry budget if Groq's
+  is exhausted, then a clean user-facing error if both fail. Which
+  provider actually served each response is always logged.
+- `app/agents/router.py` — both RAG-serving call sites
+  (`document_rag`, `knowledge_base_rag`) swapped from
+  `stream_with_retry(lambda: stream_gemini(...))` to
+  `stream_generation(prompt, gemini_model=model)`. This is the one place
+  "don't touch router logic" needed a judgment call: the actual routing
+  decisions (which path, guardrail checks, prompt construction) are
+  byte-for-byte unchanged — only which retry-layer function serves the
+  generation changed, which is squarely "the generation provider chain"
+  this task was about, not routing logic. Flagging the interpretation
+  rather than silently making it.
+- `app/rag/benchmark.py` — also updated (not explicitly listed in the
+  task, but necessary for the task to mean anything): it was calling
+  `stream_gemini` directly, bypassing the new fallback chain entirely.
+  Re-running it without this fix would have measured Gemini-only
+  performance, not what the app actually serves. Now goes through
+  `stream_generation()` and captures which provider served each
+  benchmark query (via a temporary log handler on `app.ai.retry`'s
+  logger, not a change to that function's production return signature)
+  for a per-provider breakdown in the report.
+- `settings.py`/`.env.example`/`render.yaml` — `GROQ_API_KEY`,
+  `GROQ_MODEL` added, same `sync: false` pattern as the other keys.
+  `GOOGLE_API_KEY` unchanged (still required, now documented as the
+  fallback rather than primary).
+- `tests/test_rag.py` — 4 new tests for the fallback chain (Groq
+  succeeds/Gemini never called, Groq exhausts retries/Gemini used and
+  returned, both fail/clean error, non-transient Groq error still falls
+  back without wasting a retry) plus a regression check that the old
+  `stream_with_retry` is unaffected. All 20 tests (16 prior + 4 new)
+  verified passing.
+- `Architecture.md` — "Generation Provider Chain" section (replaces the
+  old "Retry & structured error recovery" section) documents the full
+  chain, the model-deprecation catch, and the honest
+  published-benchmark-vs-own-benchmark caveat.
+
+**Not done yet:** the actual re-run of `benchmark.py` with real
+`GROQ_API_KEY`/`GOOGLE_API_KEY` to confirm Groq-primary actually helps
+*this* pipeline hit the 200ms target — still pending, still the single
+most important remaining verification gap alongside the rest of
+`Testing.md` §17b (real Sarvam call, real MSMARCO-XI ingest).
+
 ## Hackathon Track — Hackathon Phase 2 (Compliance: STT, RAG, Guardrails, Hardening)
 
-New, separate from the Phase 1–5 internship roadmap below and from
+New, separate from the Phase 1–5 roadmap below (this project's original
+solo development roadmap, not tied to any organization) and from
 Hackathon Phase 1 above. Triggered by finally obtaining the hackathon's
 official task brief (#RAGInGoa Task #2, deadline Aug 22 2026 11:59 PM
 IST), which revealed everything it grades was either unbuilt or
@@ -54,7 +143,8 @@ card's own documented example) when `datasets` isn't installed.
 runnable via `python -m app.rag.ingest`. Wired into
 `app/agents/router.py` as a new `knowledge_base_rag` path — see
 `Architecture.md`'s new section for the full writeup, including a
-product-behavior tradeoff worth reading before the internship demo (once
+product-behavior tradeoff worth reading before demoing this outside the
+hackathon context (once
 the KB index exists, general queries that don't ground well now decline
 rather than falling back to generic chat — flagged there, not buried).
 
@@ -118,10 +208,11 @@ before trusting the submission); `.env.example` (new STT/RAG config vars,
 
 ## Hackathon Track — Hackathon Phase 1 (Rename + Core Voice Pipeline)
 
-New, separate from the Phase 1–5 internship roadmap below — logged here
+New, separate from the Phase 1–5 roadmap below (this project's original
+solo development roadmap) — logged here
 per this file's own "dated entry per milestone" convention. See
 `Phases.md`'s "Hackathon Track" section for how this relates to the
-internship roadmap; short version: it doesn't replace it, it's a parallel
+original roadmap; short version: it doesn't replace it, it's a parallel
 submission push.
 
 **Reason:** submitting to the HHGoa "Voice-Enabled RAG" hackathon,
@@ -139,7 +230,8 @@ deadline Aug 22, 2026. Structured as 4 phases; this is Phase 1.
   assert the new title so this doesn't start failing), `run.py`, and
   `Readme.md`. The GitHub repo itself is deliberately still named
   `Nimbus-AI` — that's a manual rename step, not part of this pass, so the
-  README's clone instructions still point at that real URL.
+  README's clone instructions still point at that real URL. (Since
+  renamed for real — see the canonical-URLs note at the top of this file.)
 - **Ember Violet palette** applied to `frontend/css/style.css`'s `:root`
   variables. Audited every existing `--glow` usage first: kept amber glow
   on the sphere's ambient halo (`.orb-dock::before`) and the mic

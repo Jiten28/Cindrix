@@ -169,24 +169,24 @@ Acceptance criteria:
       commands themselves were never run end-to-end — the sandbox this was
       built in has no Docker daemon and no internet access to pull the base
       image. Verify this one yourself before trusting it fully.
-- [ ] Live deployed demo URL — not done; `render.yaml` is ready to go but
-      an actual deployment requires your own Render account and API keys
+- [x] Live deployed demo URL — https://cindrix-ai.onrender.com/
 
 ---
 
 ## Hackathon Track (parallel submission push) — new, see Memory.md
 
-Separate from the Phase 1–5 roadmap above, which tracks the original
-Amdocs internship deliverable: an HHGoa "Voice-Enabled RAG" hackathon
-submission with a deadline of Aug 22, 2026 is being pulled together as its
-own 4-stage push ("Hackathon Phase 1" etc., numbered separately from the
-internship phases above to avoid confusion between the two tracks).
+Separate from the Phase 1–5 roadmap above, which tracks this project's
+original solo development roadmap (not tied to any organization or
+internship): an HHGoa #RAGInGoa hackathon submission with a deadline of
+Aug 22, 2026 is being pulled together as its own 4-stage push
+("Hackathon Phase 1" etc., numbered separately from the phases above to
+avoid confusion between the two tracks).
 
 This is **not** a restart or a replacement of the plan above — the app is
-already well past the internship's Phase 2 RAG milestone (RAG, voice I/O,
-auth, analytics, and more are already built and shipped, per `Memory.md`).
-The hackathon push is pulling already-completed work — chiefly the
-Phase 2 RAG pipeline and the Phase 1 voice loop — forward into a
+already well past the original roadmap's Phase 2 RAG milestone (RAG,
+voice I/O, auth, analytics, and more are already built and shipped, per
+`Memory.md`). The hackathon push is pulling already-completed work —
+chiefly the Phase 2 RAG pipeline and the Phase 1 voice loop — forward into a
 hackathon-ready submission under deadline pressure: a rename (CINDRIX), a
 visual refresh (Ember Violet palette), verification/fixes to the existing
 voice pipeline, and updated docs. See `Memory.md` for the dated log entry.

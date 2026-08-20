@@ -1,8 +1,11 @@
 # Cindrix
 
 A calm, ever-present AI companion — conversational chatbot with persistent
-memory, tool use, and a particle-sphere visual identity, built as a final-month
-Amdocs internship project.
+memory, tool use, and a particle-sphere visual identity. An independent
+personal project, built solo — submitted to HHGoa's #RAGInGoa hackathon.
+
+**Repo:** https://github.com/Jiten28/Cindrix
+**Live demo:** https://cindrix-ai.onrender.com/
 
 This repo started as a CLI Gemini assistant (conversation memory, weather,
 crypto price, web/image search, text-to-speech). It's being rebuilt into a full
@@ -104,11 +107,8 @@ assistant (or future you) can pick up context instantly:
 ## Setup
 
 ```bash
-# repo itself is still named Nimbus-AI on GitHub for now — the rename
-# below is just the in-app product name, not the repo (that's a manual
-# rename you'll do separately)
-git clone https://github.com/Jiten28/Nimbus-AI.git
-cd Nimbus-AI
+git clone https://github.com/Jiten28/Cindrix.git
+cd Cindrix
 pip install -r requirements.txt
 ```
 

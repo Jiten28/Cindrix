@@ -4,11 +4,11 @@
 :root {
   --bg: #0A0A0C;
   --card: #1A1620;
-  --card-border: rgba(255, 255, 255, .08);
+  --card-border: rgba(255,255,255,.08);
   --accent: #9B6EF7;
   --glow: #F0A34E;
   --text: #F5F0FA;
-  --text-secondary: rgba(245, 240, 250, .6);
+  --text-secondary: rgba(245,240,250,.6);
 
   --radius-md: 12px;
   --radius-lg: 20px;
@@ -18,21 +18,16 @@
   --composer-h: 96px;
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
 /* The browser's default [hidden]{display:none} loses to any component that
    sets its own `display` (e.g. .attachment-chip's display:flex) — same
    specificity, and the component's rule tends to come later/be more
    specific. This makes `hidden` always win, so JS toggling el.hidden = true
    reliably hides things regardless of what else the component declares. */
-[hidden] {
-  display: none !important;
-}
+[hidden] { display: none !important; }
 
-html,
-body {
+html, body {
   margin: 0;
   padding: 0;
   min-height: 100%;
@@ -51,11 +46,7 @@ button {
   color: inherit;
 }
 
-ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
+ul { list-style: none; margin: 0; padding: 0; }
 
 /* ============================================================
    Layout
@@ -64,8 +55,8 @@ ul {
   position: relative;
   display: flex;
   min-height: 100vh;
-  min-height: 100dvh;
-  /* accounts for mobile browser chrome/keyboard */
+  min-height: 100dvh; /* accounts for mobile browser chrome/keyboard */
+  width: 100vw;
 }
 
 #starfield {
@@ -162,15 +153,13 @@ ul {
   padding: 0 8px;
 }
 
-.chat-list,
-.explore-list {
+.chat-list, .explore-list {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
-.chat-list li,
-.explore-list li {
+.chat-list li, .explore-list li {
   padding: 8px 8px;
   border-radius: var(--radius-md);
   font-size: 13.5px;
@@ -182,8 +171,7 @@ ul {
   cursor: pointer;
 }
 
-.chat-list li:hover,
-.explore-list li:hover {
+.chat-list li:hover, .explore-list li:hover {
   background: rgba(255, 255, 255, 0.06);
   color: var(--text);
 }
@@ -200,11 +188,7 @@ ul {
   opacity: 0.6;
   cursor: default;
 }
-
-.chat-list-empty:hover {
-  background: none;
-  color: var(--text-secondary);
-}
+.chat-list-empty:hover { background: none; color: var(--text-secondary); }
 
 .sidebar-footer {
   margin-top: auto;
@@ -330,8 +314,7 @@ ul {
    ============================================================ */
 .landing {
   min-height: calc(100vh - 63px);
-  min-height: calc(100dvh - 63px);
-  /* keeps the composer reachable when a
+  min-height: calc(100dvh - 63px); /* keeps the composer reachable when a
     mobile keyboard shrinks the visible viewport — 100vh alone doesn't
     shrink with it in every browser, which is what would clip content */
   max-height: 100vh;
@@ -452,24 +435,12 @@ ul {
   animation: msg-in 0.3s var(--ease);
 }
 
-.msg-group.user {
-  align-items: flex-end;
-}
-
-.msg-group.assistant {
-  align-items: flex-start;
-}
+.msg-group.user { align-items: flex-end; }
+.msg-group.assistant { align-items: flex-start; }
 
 @keyframes msg-in {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .msg {
@@ -507,28 +478,12 @@ ul {
   background: var(--text-secondary);
   animation: typing-bounce 1s infinite ease-in-out;
 }
-
-.typing-dots span:nth-child(2) {
-  animation-delay: 0.15s;
-}
-
-.typing-dots span:nth-child(3) {
-  animation-delay: 0.3s;
-}
+.typing-dots span:nth-child(2) { animation-delay: 0.15s; }
+.typing-dots span:nth-child(3) { animation-delay: 0.3s; }
 
 @keyframes typing-bounce {
-
-  0%,
-  60%,
-  100% {
-    transform: translateY(0);
-    opacity: 0.4;
-  }
-
-  30% {
-    transform: translateY(-4px);
-    opacity: 1;
-  }
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-4px); opacity: 1; }
 }
 
 /* per-message action row (copy / regenerate / edit) */
@@ -569,57 +524,23 @@ ul {
 /* ============================================================
    Rendered markdown content
    ============================================================ */
-.msg strong {
-  font-weight: 700;
-}
+.msg strong { font-weight: 700; }
+.msg em { font-style: italic; }
 
-.msg em {
-  font-style: italic;
-}
-
-.msg h1,
-.msg h2,
-.msg h3,
-.msg h4,
-.msg h5,
-.msg h6 {
+.msg h1, .msg h2, .msg h3, .msg h4, .msg h5, .msg h6 {
   margin: 16px 0 8px;
   line-height: 1.35;
   font-weight: 700;
 }
-
-.msg h1:first-child,
-.msg h2:first-child,
-.msg h3:first-child,
-.msg h4:first-child,
-.msg h5:first-child,
-.msg h6:first-child {
+.msg h1:first-child, .msg h2:first-child, .msg h3:first-child,
+.msg h4:first-child, .msg h5:first-child, .msg h6:first-child {
   margin-top: 2px;
 }
-
-.msg h1 {
-  font-size: 1.4em;
-}
-
-.msg h2 {
-  font-size: 1.28em;
-}
-
-.msg h3 {
-  font-size: 1.18em;
-}
-
-.msg h4 {
-  font-size: 1.08em;
-}
-
-.msg h5,
-.msg h6 {
-  font-size: 1em;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  color: var(--text-secondary);
-}
+.msg h1 { font-size: 1.4em; }
+.msg h2 { font-size: 1.28em; }
+.msg h3 { font-size: 1.18em; }
+.msg h4 { font-size: 1.08em; }
+.msg h5, .msg h6 { font-size: 1em; text-transform: uppercase; letter-spacing: 0.02em; color: var(--text-secondary); }
 
 .msg hr {
   border: none;
@@ -641,30 +562,20 @@ ul {
   font-family: "SF Mono", "Fira Code", Consolas, monospace;
 }
 
-.msg :not(pre)>code {
+.msg :not(pre) > code {
   background: rgba(255, 255, 255, 0.08);
   padding: 1px 5px;
   border-radius: 5px;
   font-size: 0.9em;
 }
 
-.msg ul,
-.msg ol {
+.msg ul, .msg ol {
   margin: 10px 0;
   padding-left: 24px;
 }
-
-.msg ul {
-  list-style: disc;
-}
-
-.msg ol {
-  list-style: decimal;
-}
-
-.msg li {
-  margin: 5px 0;
-}
+.msg ul { list-style: disc; }
+.msg ol { list-style: decimal; }
+.msg li { margin: 5px 0; }
 
 .msg table {
   border-collapse: collapse;
@@ -672,14 +583,11 @@ ul {
   margin: 14px 0;
   font-size: 13.5px;
 }
-
-.msg th,
-.msg td {
+.msg th, .msg td {
   border: 1px solid var(--card-border);
   padding: 6px 10px;
   text-align: left;
 }
-
 .msg th {
   background: rgba(255, 255, 255, 0.06);
   font-weight: 600;
@@ -756,14 +664,10 @@ ul {
     height: 56px;
     transform: translate(0, 0) scale(0.85);
   }
-
   .app.chat-active .orb-dock {
     transform: translate(0, 0) scale(1);
   }
-
-  .orb-dock .sphere-state {
-    display: none;
-  }
+  .orb-dock .sphere-state { display: none; }
 }
 
 /* ============================================================
@@ -820,15 +724,8 @@ ul {
 }
 
 @keyframes menu-in {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .attach-menu-item {
@@ -906,9 +803,7 @@ ul {
   transition: transform 0.15s var(--ease);
 }
 
-.composer-send:hover {
-  transform: scale(1.06);
-}
+.composer-send:hover { transform: scale(1.06); }
 
 /* Mic states keep --glow (amber) — this is the one UI-chrome spot outside
    the sphere itself that's directly voice-related, so it stays paired
@@ -1083,21 +978,11 @@ ul {
   .sidebar {
     position: fixed;
     inset: 0 auto 0 0;
-    z-index: 15;
-    /* above the backdrop (12) and everything in .main */
+    z-index: 15; /* above the backdrop (12) and everything in .main */
   }
-
-  .sidebar:not(.collapsed) {
-    box-shadow: 0 0 40px rgba(0, 0, 0, 0.5);
-  }
-
-  .sidebar.collapsed {
-    margin-left: -260px;
-  }
-
-  .landing-title {
-    font-size: 21px;
-  }
+  .sidebar:not(.collapsed) { box-shadow: 0 0 40px rgba(0,0,0,0.5); }
+  .sidebar.collapsed { margin-left: -260px; }
+  .landing-title { font-size: 21px; }
 
   /* Drawer scrim — shown/hidden in sync with .sidebar's collapsed state by
      app.js. Sits below the sidebar itself but above everything else in
@@ -1143,10 +1028,7 @@ ul {
     scrollbar-width: none;
     -ms-overflow-style: none;
   }
-
-  .topbar-controls::-webkit-scrollbar {
-    display: none;
-  }
+  .topbar-controls::-webkit-scrollbar { display: none; }
 
   .voice-select {
     max-width: 92px;
@@ -1263,9 +1145,7 @@ ul {
   transition: transform 0.15s var(--ease);
 }
 
-.form-submit:hover {
-  transform: scale(1.015);
-}
+.form-submit:hover { transform: scale(1.015); }
 
 .form-submit.secondary {
   background: rgba(255, 255, 255, 0.06);
@@ -1313,8 +1193,7 @@ ul {
   font-size: 13px;
 }
 
-.admin-table th,
-.admin-table td {
+.admin-table th, .admin-table td {
   text-align: left;
   padding: 8px 10px;
   border-bottom: 1px solid var(--card-border);
@@ -1359,11 +1238,9 @@ ul {
 .password-field .form-input::-ms-clear {
   display: none;
 }
-
 .password-field .form-input::-webkit-textfield-decoration-container {
   display: none;
 }
-
 .password-field .form-input::-webkit-credentials-auto-fill-button {
   display: none !important;
 }

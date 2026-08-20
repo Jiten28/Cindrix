@@ -6,23 +6,25 @@
 
 ## Context
 
-Final-month internship deliverable (Amdocs). Built as an industry-grade AI chatbot
-product, not a toy demo — intended to double as a portfolio piece for AI/ML and
-software engineering roles.
+An independent personal project — built solo, no organizational affiliation
+or outside guidance. Built as an industry-grade AI chatbot product, not a
+toy demo — intended to double as a portfolio piece for AI/ML and software
+engineering roles, and as a submission to HHGoa's #RAGInGoa hackathon (see
+the Hackathon Submission Requirement section below).
 
 ## Problem Statement
 
-Most internship chatbot projects are barebones Q&A wrappers around an LLM API with
-no memory, no personality, and no real UX design. CINDRIX aims to feel like a real
-AI companion: it remembers context across sessions, understands intent and
-sentiment, responds through an expressive animated face, and gives the user a
-professional dashboard to see what it's doing (which model, which tools, memory
-status).
+Most personal-project chatbots are barebones Q&A wrappers around an LLM API
+with no memory, no personality, and no real UX design. CINDRIX aims to feel
+like a real AI companion: it remembers context across sessions, understands
+intent and sentiment, responds through an expressive animated face, and
+gives the user a professional dashboard to see what it's doing (which
+model, which tools, memory status).
 
 ## Target Users
 
-- **Primary (internship reviewers / evaluators):** judging technical depth,
-  architecture quality, and UI polish.
+- **Primary (portfolio reviewers / hackathon judges):** judging technical
+  depth, architecture quality, and UI polish.
 - **Secondary (end users of the deployed demo):** anyone chatting with CINDRIX for
   general assistance, Q&A, document understanding, and voice interaction.
 
@@ -102,15 +104,15 @@ status).
 
 ## Stakeholders
 
-- You (developer / intern)
-- Amdocs internship reviewers/mentors
+- You (developer — sole author)
+- HHGoa #RAGInGoa hackathon judges
 - (Optional) end users of the public demo, if deployed
 
 ## Hackathon Submission Requirement (formal, added — see Memory.md)
 
-Separate from the internship deliverable above, this build is also being
-submitted to the HHGoa "Voice-Enabled RAG" hackathon (deadline Aug 22,
-2026). That task has one hard, formal requirement this PRD is now
+This build is being submitted to HHGoa's #RAGInGoa hackathon (Task #2:
+Voice-Enabled RAG Model, deadline Aug 22, 2026). That task has one hard,
+formal requirement this PRD is now
 explicit about rather than leaving implied by the code: **a user must be
 able to ask a question by voice and receive a spoken answer that is
 grounded in retrieved document content (RAG), not a generic response.**
