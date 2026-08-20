@@ -45,6 +45,49 @@ _CONNECT_TIMEOUT = 10
 _READ_TIMEOUT = 30
 
 
+def call_groq(prompt: str, model: Optional[str] = None) -> str:
+    """Non-streaming call — returns the complete response as a single
+    string. Used as the primary generation provider for non-streaming
+    generation calls (e.g. app/tools/weather.py's Gemini-fallback
+    description) — see app/ai/retry.py's call_generation(). Mirrors
+    app/ai/gemini_client.py's call_gemini() shape/error-sentinel
+    convention for the same reason stream_groq() mirrors stream_gemini()
+    — see this module's docstring."""
+    if not settings.GROQ_API_KEY:
+        return "(Groq error: not configured — missing GROQ_API_KEY)"
+
+    resolved_model = model or settings.GROQ_MODEL
+    try:
+        response = requests.post(
+            _ENDPOINT,
+            headers={
+                "Authorization": f"Bearer {settings.GROQ_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": resolved_model,
+                "messages": [{"role": "user", "content": prompt}],
+                "stream": False,
+            },
+            timeout=(_CONNECT_TIMEOUT, _READ_TIMEOUT),
+        )
+        if response.status_code != 200:
+            body = response.text[:500]
+            logger.error("[groq] HTTP %s: %s", response.status_code, body)
+            return f"(Groq error: {response.status_code} {body})"
+        data = response.json()
+        choices = data.get("choices") or []
+        if not choices:
+            return "(Groq error: empty response — no choices returned)"
+        return (choices[0].get("message", {}).get("content") or "").strip()
+    except requests.exceptions.Timeout:
+        logger.error("[groq] request timed out")
+        return "(Groq error: timeout)"
+    except requests.exceptions.RequestException as e:
+        logger.error("[groq] request failed: %s", e)
+        return f"(Groq error: {e})"
+
+
 def stream_groq(prompt: str, model: Optional[str] = None) -> Generator[str, None, None]:
     """Streaming call — yields text chunks as Groq generates them. Used as
     the primary generation provider for RAG-serving calls — see

@@ -229,7 +229,13 @@ real Sarvam API, the real MSMARCO-XI dataset, or real Gemini traffic.
       real MSMARCO-XI row schema (verified against the live HF dataset
       card, not assumed), including Devanagari sentence boundaries
 - [x] `app/rag/dataset.py` — fixture fallback tested (yields the
-      documented example rows, loudly logged as a fixture)
+      documented example rows, loudly logged as a fixture); shard-path
+      construction for the confirmed train/validation patterns, rejection
+      of an unconfirmed split, and (via a mocked `load_dataset`) that the
+      actual call now requests one language's shard file directly
+      (`data_files={"train": "train/hintrain.parquet"}`) instead of
+      streaming the combined "default" config — the specific thing that
+      crashed twice in real runs before this fix
 - [x] `app/rag/vector_store.py` — exact search correctness + save/load
       round-trip tested (numpy fallback backend — `faiss` isn't
       installed in the sandbox this was built in)
@@ -261,6 +267,12 @@ real Sarvam API, the real MSMARCO-XI dataset, or real Gemini traffic.
       `is_self_test` and refuses to claim `meets_target` when no real
       `GOOGLE_API_KEY` is available, rather than reporting misleadingly
       fast near-zero numbers as if they meant something
+- [x] `app/ai/retry.py`'s `call_generation()` (non-streaming chain) and
+      `app/tools/weather.py`'s use of it — Groq succeeds/Gemini never
+      called, Groq fails/Gemini used, both fail/clean error not leaked —
+      plus a direct regression test reproducing the exact reported bug
+      (a weather question with both providers failing) confirming no raw
+      `503`/`UNAVAILABLE` text reaches the returned string
 
 ### 17b. Needs a real environment (network + real API keys) — not done yet
 - [ ] Run `pip install -r requirements.txt` somewhere with network access
@@ -268,18 +280,20 @@ real Sarvam API, the real MSMARCO-XI dataset, or real Gemini traffic.
       log warnings about missing faiss/datasets *stop* appearing
 - [ ] `python -m app.rag.ingest` against the real `ai4bharat/MSMARCO-XI`
       dataset (not the fixture) — confirm the "falling back to FIXTURE"
-      log line is gone and real row counts appear. **Specifically watch
-      for the `[rag.dataset]` log line about zero matches / distinct
-      `target_lang` values seen** — `hin_Deva` for Hindi is
-      convention-based (confirmed against sibling AI4Bharat datasets),
-      not confirmed against a literal fetched MSMARCO-XI row (tooling
-      limits in the sandbox this was fixed in couldn't complete that
-      specific check — see `Memory.md`'s Hackathon Phase 3 entry). If
-      the log shows zero matches, it'll also show the actual values
-      present — fix `RAG_DATASET_LANGUAGE` or `LANGUAGE_CODE_MAP`'s "hi"
-      entry in `app/rag/dataset.py` to match and re-run; that's expected
-      to be a one-line fix if `hin_Deva` turns out wrong, not a deeper
-      problem
+      log line is gone, the log shows loading `train/hintrain.parquet`
+      directly (not streaming the combined "default" config), and real
+      row counts appear without the earlier MemoryError/WinError 10038
+      crash. **Specifically watch for the `[rag.dataset]` log line about
+      zero matches / distinct `target_lang` values seen in the first few
+      rows** — `hin_Deva` for Hindi is convention-based (confirmed
+      against sibling AI4Bharat datasets and now also against the
+      confirmed real shard filename `train/hintrain.parquet`), but still
+      not confirmed against a literal fetched row's `target_lang` field.
+      If wrong, it'll now surface almost immediately (first few rows of
+      the shard) rather than after scanning millions of rows — fix
+      `LANGUAGE_CODE_MAP`'s "hi" entry in `app/rag/dataset.py` to match
+      and re-run; expected to be a one-line fix if `hin_Deva` turns out
+      wrong, not a deeper problem
 - [ ] Ask a question the indexed corpus should cover — confirm a grounded
       answer citing/using retrieved passage content, not a generic one
 - [ ] Ask something clearly outside the corpus — confirm the honest
@@ -295,6 +309,20 @@ real Sarvam API, the real MSMARCO-XI dataset, or real Gemini traffic.
       question that should hit the knowledge-base RAG path, confirm the
       `[retry] response served by Groq (primary)` log line appears (not
       an immediate fallback to Gemini) and the answer is coherent
+- [ ] Same as above, but for **general chat** — ask something that isn't
+      a tool match, doesn't have an attachment, and doesn't hit the
+      knowledge base (e.g. small talk, or a factual question the corpus
+      doesn't cover) — confirm the `[retry] response served by Groq
+      (primary)` log line appears here too, not just on the RAG paths.
+      This is the path that was actually leaking raw Gemini errors in
+      production before this fix (see `Memory.md`'s Hackathon Phase 5
+      entry) — check the analytics panel's average response latency
+      before/after to see whether Groq-primary actually helps here, since
+      this is the highest-traffic path in the router
+- [ ] Ask a weather question with an invalid/missing `OPENWEATHER_API_KEY`
+      (forces the Gemini-fallback weather path) — confirm a normal weather
+      description comes back, not raw error text, even if you temporarily
+      break `GROQ_API_KEY`/`GOOGLE_API_KEY` to force the both-fail case
 - [ ] With only `GOOGLE_API_KEY` set (no `GROQ_API_KEY`, or an invalid
       one) — confirm the response still comes back correctly via the
       Gemini fallback, and the log shows why Groq was skipped/failed
@@ -309,6 +337,9 @@ real Sarvam API, the real MSMARCO-XI dataset, or real Gemini traffic.
       expected to need real tuning, not something the harness itself can
       fix) — and note whether Groq-primary actually got closer to target
       than a Gemini-only run would have, since that's the whole premise
-      for this ordering
+      for this ordering. Note: `benchmark.py` only measures the
+      knowledge-base RAG path's generation stage, not general chat's —
+      the analytics-panel comparison above is the way to sanity-check
+      general chat's latency specifically
 
 ---

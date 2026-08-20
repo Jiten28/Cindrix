@@ -37,8 +37,8 @@ import logging
 import time
 from typing import Callable, Generator, Optional, Tuple
 
-from app.ai.gemini_client import stream_gemini
-from app.ai.groq_client import stream_groq
+from app.ai.gemini_client import call_gemini, stream_gemini
+from app.ai.groq_client import call_groq, stream_groq
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -174,8 +174,10 @@ def stream_with_fallback(
 
 
 def stream_generation(prompt: str, gemini_model: Optional[str] = None) -> Generator[str, None, None]:
-    """Public entry point for RAG-serving generation calls
-    (app/agents/router.py's document_rag and knowledge_base_rag paths).
+    """Public entry point for streaming generation calls — used by
+    app/agents/router.py for every text-generation response the app
+    produces (tool-synthesis, RAG-serving, and plain conversational
+    chat alike — see that module for the specific call sites).
 
     Groq (settings.GROQ_MODEL, fixed) is primary; Gemini (gemini_model —
     e.g. from the model-selector UI, or settings.GEMINI_MODEL if not
@@ -192,3 +194,22 @@ def stream_generation(prompt: str, gemini_model: Optional[str] = None) -> Genera
         return stream_gemini(prompt, model=gemini_model)
 
     yield from stream_with_fallback(make_groq_stream, make_gemini_stream, "Groq", "Gemini")
+
+
+def call_generation(prompt: str, gemini_model: Optional[str] = None) -> str:
+    """Non-streaming equivalent of stream_generation(), for callers that
+    need a single complete string rather than a stream (e.g.
+    app/tools/weather.py's Gemini-fallback weather description, which
+    used to call call_gemini() directly and leak raw errors the same way
+    the streaming paths did before this fix).
+
+    Implemented by reusing stream_with_fallback rather than a second
+    parallel retry/fallback implementation — a non-streaming call is just
+    a one-chunk "stream" from this machinery's point of view."""
+    def make_groq_call():
+        yield call_groq(prompt, model=settings.GROQ_MODEL)
+
+    def make_gemini_call():
+        yield call_gemini(prompt, model=gemini_model)
+
+    return "".join(stream_with_fallback(make_groq_call, make_gemini_call, "Groq", "Gemini"))

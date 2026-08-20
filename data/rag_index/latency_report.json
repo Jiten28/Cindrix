@@ -4,77 +4,79 @@
   "self_test_note": null,
   "provider_config_note": null,
   "query_count": 5,
-  "grounded_count": 0,
-  "served_by_breakdown": {},
+  "grounded_count": 5,
+  "served_by_breakdown": {
+    "Groq (primary)": 5
+  },
   "statistical_note": "5 test queries — enough to sanity-check where time goes, not a statistically rigorous P50/P70/P100 in the large-sample sense. Widen DEFAULT_TEST_QUERIES for a stronger claim.",
   "stages_ms": {
     "embed_query": {
-      "p50": 478.8325999979861,
-      "p70": 505.4913999920245,
-      "p100": 1015.0816999957897
+      "p50": 517.9589999988821,
+      "p70": 531.338599999799,
+      "p100": 922.705599999972
     },
     "vector_retrieval": {
-      "p50": 0.000100000761449337,
-      "p70": 0.000200001522898674,
-      "p100": 0.000200001522898674
+      "p50": 0.2943999988929136,
+      "p70": 0.31149999995250255,
+      "p100": 0.4375000007712515
     },
     "generation": {
-      "p50": 0.001400010660290718,
-      "p70": 0.001500011421740055,
-      "p100": 0.001800013706088066
+      "p50": 889.4923999996536,
+      "p70": 968.3592000001227,
+      "p100": 1599.103099999411
     }
   },
   "end_to_end_ms": {
-    "p50": 478.834099980304,
-    "p70": 505.49310000496916,
-    "p100": 1015.0837000110187
+    "p50": 1500.135300000693,
+    "p70": 1776.1314999988826,
+    "p100": 2117.233799999667
   },
   "meets_target": false,
   "per_query": [
     {
       "query": "ताजमहल कहाँ स्थित है?",
-      "embed_ms": 1015.0816999957897,
-      "retrieve_ms": 0.000200001522898674,
-      "generate_ms": 0.001800013706088066,
-      "total_ms": 1015.0837000110187,
-      "grounded": false,
-      "served_by": null
+      "embed_ms": 922.705599999972,
+      "retrieve_ms": 0.2175999998144107,
+      "generate_ms": 853.2082999990962,
+      "total_ms": 1776.1314999988826,
+      "grounded": true,
+      "served_by": "Groq (primary)"
     },
     {
       "query": "मेनहाटन प्रकल्प की सफलता का तत्काल प्रभाव क्या था?",
-      "embed_ms": 505.4913999920245,
-      "retrieve_ms": 0.000200001522898674,
-      "generate_ms": 0.001500011421740055,
-      "total_ms": 505.49310000496916,
-      "grounded": false,
-      "served_by": null
+      "embed_ms": 517.9589999988821,
+      "retrieve_ms": 0.1717000013741199,
+      "generate_ms": 1599.103099999411,
+      "total_ms": 2117.233799999667,
+      "grounded": true,
+      "served_by": "Groq (primary)"
     },
     {
       "query": "भारत की राजधानी क्या है?",
-      "embed_ms": 474.06629999750294,
-      "retrieve_ms": 0.000100000761449337,
-      "generate_ms": 0.001400010660290718,
-      "total_ms": 474.0678000089247,
-      "grounded": false,
-      "served_by": null
+      "embed_ms": 505.00860000101966,
+      "retrieve_ms": 0.2943999988929136,
+      "generate_ms": 889.4923999996536,
+      "total_ms": 1394.7953999995661,
+      "grounded": true,
+      "served_by": "Groq (primary)"
     },
     {
       "query": "आगरा शहर के बारे में बताइए",
-      "embed_ms": 476.91900000791065,
-      "retrieve_ms": 0.000100000761449337,
-      "generate_ms": 0.001100008375942707,
-      "total_ms": 476.92020001704805,
-      "grounded": false,
-      "served_by": null
+      "embed_ms": 531.338599999799,
+      "retrieve_ms": 0.4375000007712515,
+      "generate_ms": 968.3592000001227,
+      "total_ms": 1500.135300000693,
+      "grounded": true,
+      "served_by": "Groq (primary)"
     },
     {
       "query": "विश्व युद्ध कब समाप्त हुआ?",
-      "embed_ms": 478.8325999979861,
-      "retrieve_ms": 0.000100000761449337,
-      "generate_ms": 0.0013999815564602613,
-      "total_ms": 478.834099980304,
-      "grounded": false,
-      "served_by": null
+      "embed_ms": 502.4496000005456,
+      "retrieve_ms": 0.31149999995250255,
+      "generate_ms": 788.2245000000694,
+      "total_ms": 1290.9856000005675,
+      "grounded": true,
+      "served_by": "Groq (primary)"
     }
   ]
 }

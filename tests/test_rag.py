@@ -18,6 +18,7 @@ from unittest.mock import patch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.rag.chunking import fixed_size_chunks, metadata_aware_chunks, semantic_chunks
+from app.rag.dataset import _shard_path, resolve_target_lang_code
 from app.rag.guardrails import check_grounding, is_offtopic_for_kb, is_unsafe
 from app.rag.vector_store import VectorStore
 
@@ -280,4 +281,113 @@ def test_fallback_chain_nontransient_primary_error_still_falls_back():
     result = list(stream_with_fallback(groq_nontransient_error, gemini_ok, "Groq", "Gemini"))
     assert result == ["Gemini answered instead."]
     assert groq_call_count[0] == 1  # non-transient — no retry wasted, straight to fallback
+
+
+# --- call_generation (non-streaming fallback chain) ------------------------
+# Used by app/tools/weather.py and anything else that needs a single
+# complete string rather than a stream. Built on stream_with_fallback (a
+# non-streaming call is just a one-chunk "stream"), so these mostly
+# confirm that reuse actually works end to end, not re-testing the retry
+# mechanics themselves (already covered above).
+
+# --- dataset shard-path fix (Task 1 — was streaming+filtering the whole
+# combined 10.1M-row "default" config, crashing on other languages' shards
+# before ever reaching a match; now loads the target language's shard file
+# directly) ------------------------------------------------------------
+
+def test_shard_path_construction_for_confirmed_splits():
+    assert _shard_path("hin_Deva", "train") == "train/hintrain.parquet"
+    assert _shard_path("asm_Beng", "train") == "train/asmtrain.parquet"
+    assert _shard_path("tel_Telu", "validation") == "validation/telval.parquet"
+
+
+def test_shard_path_rejects_unconfirmed_split():
+    try:
+        _shard_path("hin_Deva", "test")
+        assert False, "expected ValueError for an unconfirmed split pattern"
+    except ValueError:
+        pass
+
+
+def test_load_msmarco_xi_loads_only_target_language_shard():
+    """The actual bug fix: confirms load_dataset is called with
+    data_files pointing at ONE shard (not the combined "default" config),
+    so it never has to stream through other languages' shards first."""
+    import importlib
+    import sys
+    import types
+
+    if "datasets" not in sys.modules:
+        sys.modules["datasets"] = types.ModuleType("datasets")
+
+    import app.rag.dataset as ds_module
+    importlib.reload(ds_module)
+
+    fake_rows = [{"target_lang": "hin_Deva", "query_id": i} for i in range(3)]
+    call_kwargs = {}
+
+    def fake_load_dataset(name, data_files=None, split=None, streaming=None):
+        call_kwargs["name"] = name
+        call_kwargs["data_files"] = data_files
+        call_kwargs["split"] = split
+        call_kwargs["streaming"] = streaming
+        return iter(fake_rows)
+
+    ds_module._hf_datasets = types.SimpleNamespace(load_dataset=fake_load_dataset)
+    ds_module._HF_DATASETS_AVAILABLE = True
+
+    rows = list(ds_module.load_msmarco_xi(language="hi", split="train", max_rows=10))
+    assert len(rows) == 3
+    assert call_kwargs["data_files"] == {"train": "train/hintrain.parquet"}
+    assert call_kwargs["streaming"] is True
+
+
+def test_call_generation_groq_succeeds_gemini_never_called():
+    from app.ai.retry import call_generation
+
+    with patch("app.ai.retry.call_groq", return_value="Groq's answer."):
+        with patch("app.ai.retry.call_gemini") as mock_gemini:
+            result = call_generation("some prompt")
+    assert result == "Groq's answer."
+    assert not mock_gemini.called
+
+
+def test_call_generation_groq_fails_gemini_used():
+    from app.ai.retry import call_generation
+
+    with patch("app.ai.retry.call_groq", return_value="(Groq error: 503 UNAVAILABLE. overloaded)"):
+        with patch("app.ai.retry.call_gemini", return_value="Gemini's answer."):
+            with patch("app.ai.retry.time.sleep"):
+                result = call_generation("some prompt")
+    assert result == "Gemini's answer."
+
+
+def test_call_generation_both_fail_clean_error_not_leaked():
+    from app.ai.retry import call_generation
+
+    with patch("app.ai.retry.call_groq", return_value="(Groq error: 503 UNAVAILABLE. down)"):
+        with patch("app.ai.retry.call_gemini", return_value="(Gemini error: 503 UNAVAILABLE. also down)"):
+            with patch("app.ai.retry.time.sleep"):
+                result = call_generation("some prompt")
+    assert "503" not in result
+    assert "couldn't reach either" in result
+
+
+def test_weather_gemini_fallback_does_not_leak_raw_error():
+    """Regression test for the exact bug reported live: weather questions
+    showing raw '(Gemini error: 503 UNAVAILABLE...)' text as the answer.
+    call_gemini's return value is truthy even when it's an error string,
+    so `txt or "Sorry..."` used to let it straight through — this
+    confirms get_weather_gemini's fallback now goes through the
+    Groq/Gemini chain and never surfaces a raw provider error."""
+    from app.tools import weather
+
+    with patch("app.tools.weather.call_gemini_json", return_value=None):
+        with patch("app.ai.retry.call_groq", return_value="(Groq error: 503 UNAVAILABLE. down)"):
+            with patch("app.ai.retry.call_gemini", return_value="(Gemini error: 503 UNAVAILABLE. also down)"):
+                with patch("app.ai.retry.time.sleep"):
+                    result = weather.get_weather_gemini("Delhi")
+    assert "503" not in result
+    assert "UNAVAILABLE" not in result
+    assert "couldn't reach either" in result
 

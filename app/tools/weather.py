@@ -4,7 +4,8 @@ from typing import Optional
 
 import requests
 
-from app.ai.gemini_client import call_gemini, call_gemini_json
+from app.ai.gemini_client import call_gemini_json
+from app.ai.retry import call_generation
 from app.config import settings
 
 
@@ -52,7 +53,13 @@ City: {city}
     if data and "temperature_C" in data and "description" in data:
         note = f" ({data.get('note')})" if data.get("note") else ""
         return f"The weather in {city} is about {data['temperature_C']}°C with {data['description']}.{note}"
-    txt = call_gemini(f"Briefly describe the current weather in {city}. Keep it to one sentence.")
+    # Plain-English fallback if the JSON-structured attempt above didn't
+    # come back usable — this is the call that used to leak raw
+    # "(Gemini error: ...)" text as the literal weather answer (call_gemini
+    # returning an error string is truthy, so `txt or "Sorry..."` let it
+    # through unchanged). Now goes through the same Groq-primary/Gemini-
+    # fallback/clean-error chain as every other generation call in the app.
+    txt = call_generation(f"Briefly describe the current weather in {city}. Keep it to one sentence.")
     return txt or f"Sorry, I couldn't determine the weather for {city}."
 
 

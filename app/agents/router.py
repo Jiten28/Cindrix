@@ -32,7 +32,7 @@ import re
 from typing import Dict, Generator, List, Optional
 
 from app.ai.embeddings import embed_query, top_k_chunks
-from app.ai.gemini_client import call_gemini, stream_gemini, stream_gemini_vision
+from app.ai.gemini_client import stream_gemini_vision
 from app.ai.retry import stream_generation
 from app.config import settings
 from app.memory.attachment_store import get_active
@@ -195,7 +195,11 @@ def stream_route_query(
             f"Search results:\n{context_block}\n\n"
             f"User question: {query}\nCindrix:"
         )
-        yield from stream_gemini(prompt, model=model)
+        # Same generation provider chain as the RAG paths below — this
+        # used to call stream_gemini directly, which is exactly the raw-
+        # error-leak bug Priority 5 was meant to fix, just on a path that
+        # wasn't wired up yet. See app/ai/retry.py's stream_generation.
+        yield from stream_generation(prompt, gemini_model=model)
         return
 
     attachment = get_active(f"{user_id}:{conversation_id}")
@@ -265,4 +269,12 @@ def stream_route_query(
         f"Conversation so far:\n{context}\n\n"
         f"User: {user_input}\nCindrix:"
     )
-    yield from stream_gemini(prompt, model=model)
+    # Plain conversational answer — same provider chain as the RAG paths
+    # (Groq primary, Gemini fallback, clean error if both fail). This was
+    # the actual source of the "(Gemini error: 503 UNAVAILABLE...)" leak
+    # confirmed live in production for general chat (weather questions,
+    # factual questions) — it's the most-hit path in the whole router
+    # (everything that isn't a tool, an attachment, or a knowledge-base
+    # match lands here), so it was the highest-impact place this bug
+    # could still exist even after Priority 5 supposedly fixed it.
+    yield from stream_generation(prompt, gemini_model=model)

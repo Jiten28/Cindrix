@@ -14,9 +14,75 @@
 > — fix it back to these two values rather than trusting what's already
 > written elsewhere as a source of truth.
 
-Last updated: end of Phase 4 (original roadmap); Hackathon Phase 4 in progress (see below)
+Last updated: end of Phase 4 (original roadmap); Hackathon Phase 5 in progress (see below)
 
 ---
+
+## Hackathon Track — Hackathon Phase 5 (Dataset Shard Fix + General-Chat Fallback Coverage)
+
+New. Two real crashes/bugs, both confirmed via live testing rather than
+inferred:
+
+**1. Dataset loader crash #2 (`app/rag/dataset.py`).** The Hackathon
+Phase 3 fix (per-language configs don't exist, switch to `"default"` +
+filter by `target_lang`) was directionally right but incomplete: it
+crashed differently on the real second run — `MemoryError` + `WinError
+10038` downloading `train/asmtrain.parquet` (Assamese) before ever
+reaching a Hindi row. Root cause: `"default"` is per-language parquet
+shards concatenated by the loader, and streaming-then-filtering still has
+to fetch each shard in full first. Fixed by loading the target language's
+shard file directly (`data_files={"train": "train/hintrain.parquet"}`)
+instead of streaming the combined config. Confirmed the shard naming
+pattern (`{split}/{iso3}{suffix}.parquet`) against three real files in
+the repo's tree while fixing this (`train/hintrain.parquet`,
+`train/asmtrain.parquet`, `validation/telval.parquet`) — see
+`Architecture.md`'s rewritten Dataset section for the full before/after.
+Side effect worth noting: this also makes `hin_Deva`'s correctness (still
+not confirmed against a literal fetched row — see Hackathon Phase 3's
+entry) much cheaper to disprove if wrong, since a mismatch now surfaces
+on the shard's first few rows instead of after scanning millions of rows
+from other languages.
+
+**2. General chat still leaking raw Gemini errors (`app/agents/router.py`,
+`app/tools/weather.py`).** Confirmed via live testing: `stream_generation()`
+(the Groq/Gemini fallback chain from Hackathon Phase 4) only got wired
+into the two RAG-serving call sites, not the web-search-synthesis path or
+the final plain-conversational fallback — which is the highest-traffic
+path in the whole router (everything that isn't a tool/attachment/KB
+match lands there). Weather questions specifically hit a second, separate
+bug: `app/tools/weather.py`'s Gemini fallback (`call_gemini(...)`) is a
+non-streaming call with no fallback-chain equivalent to route through at
+all. Both fixed:
+- `router.py`'s web-search-synthesis and plain-conversational paths now
+  call `stream_generation()` — same as the RAG paths.
+- Added `call_generation()` to `retry.py` (non-streaming equivalent,
+  built by reusing `stream_with_fallback` — a non-streaming call is just
+  a one-chunk "stream" from that machinery's point of view — not a
+  second parallel retry implementation) and `call_groq()` to
+  `groq_client.py` (Groq's non-streaming endpoint, mirrors `call_gemini`'s
+  error-sentinel shape). `weather.py`'s plain-text Gemini fallback now
+  goes through `call_generation()`.
+- A regression test reproduces the exact reported scenario (both
+  providers failing on a weather question) and confirms no raw `503`/
+  `UNAVAILABLE` text reaches the returned string.
+
+**Known gap, explicitly not fixed:** the image-vision path
+(`stream_gemini_vision`) still calls Gemini directly, unprotected by any
+fallback chain. Would need a distinct Groq vision client (different
+message format, unconfirmed whether a suitable vision model exists on
+Groq) — flagged in `Architecture.md` rather than silently built beyond
+what was asked (the reported bug was specifically about text generation:
+weather, factual questions) or silently left undocumented.
+
+**Tests:** 7 new (3 for the dataset shard fix — path construction, an
+unconfirmed-split rejection, and a mocked `load_dataset` call verifying
+the actual `data_files` argument; 4 for `call_generation` including the
+weather-specific regression test). All 27 tests (20 prior + 7 new)
+verified passing.
+
+**Not done yet:** re-running ingest/benchmark for real against the fixed
+dataset loader and the now-fully-wired fallback chain — still the
+critical remaining gap, `Testing.md` §17b.
 
 ## Hackathon Track — Hackathon Phase 4 (Groq-Primary Generation Provider Chain)
 

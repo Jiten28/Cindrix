@@ -278,20 +278,60 @@ Added to satisfy the HHGoa hackathon's grading criteria — see
 ### Dataset
 
 `ai4bharat/MSMARCO-XI` (`app/rag/dataset.py`) — the hackathon-mandated
-corpus, not a sample. Verified directly against the live HuggingFace
-dataset card while building this (dataset schemas/APIs go stale in
-training data, so this was looked up fresh rather than assumed): 14
-Indic-language configs, ~10.1M rows per language in the `train` split,
-row shape `{query, query_id, query_type, target_lang, Eng_Query,
-Eng_Answer, passages: {is_selected, English_passages,
-Translated_passages}}`. Loaded via HuggingFace `datasets` with
-`streaming=True` — never bulk-downloads the multi-GB file — and capped at
+corpus, not a sample. Got this wrong twice in earlier sessions before it
+actually worked against real data — both mistakes and the fixes are
+worth recording here, since they're exactly the kind of thing a stale
+training-data assumption or an out-of-date usage snippet produces:
+
+1. **First mistake:** assumed 14 per-language configs
+   (`load_dataset(..., "hi", split="train")`), copied from the dataset
+   card's own "Usage" code sample. Crashed with `BuilderConfig 'hi' not
+   found. Available: ['default']` — the card's sample is stale relative
+   to the dataset's actual current structure, which exposes a single
+   `"default"` config (11.5M rows total: `train` 10.1M, `validation`
+   1.37M) with all 14 languages mixed together, filterable only by each
+   row's `target_lang` field.
+2. **Second mistake, after fixing the first:** switched to streaming the
+   combined `"default"` config and filtering by `target_lang` in Python
+   as rows passed by. This crashed differently — `MemoryError` + `WinError
+   10038` while downloading `train/asmtrain.parquet` (Assamese). Root
+   cause: `"default"` isn't one combined file, it's **per-language
+   parquet shards** concatenated by the loader, and streaming through the
+   concatenation still has to fetch each shard in full before moving to
+   the next — Assamese apparently sorts before Hindi, so the stream tried
+   to pull all of Assamese's (large) shard before ever reaching a single
+   Hindi row.
+
+**Current, working approach:** load the target language's shard file
+directly, by name, instead of streaming the combined config:
+```python
+load_dataset("ai4bharat/MSMARCO-XI",
+              data_files={"train": "train/hintrain.parquet"},
+              split="train", streaming=True)
+```
+Shard filenames follow `{split_dir}/{iso3}{suffix}.parquet` — confirmed
+against real files in the repo's tree (`train/hintrain.parquet`,
+`train/asmtrain.parquet`, `validation/telval.parquet`), giving
+`train/<iso3>train.parquet` and `validation/<iso3>val.parquet` as the two
+confirmed patterns (`app/rag/dataset.py`'s `_shard_path()` raises clearly
+for any other split rather than guessing at an unconfirmed pattern).
+`target_lang` is still checked per row after loading — now as a cheap
+safety check on an already-scoped, single-language shard rather than the
+thing doing the scoping, and it fires almost immediately (first few rows)
+if the shard-filename assumption turns out wrong for a given language,
+rather than only surfacing after scanning millions of rows the old
+combined-stream approach would have needed.
+
+Row shape (confirmed, unchanged since the first fix): `{query, query_id,
+query_type, target_lang, Eng_Query, Eng_Answer, passages: {is_selected,
+English_passages, Translated_passages}}`. Loaded with `streaming=True` —
+never bulk-downloads the multi-GB shard file — and capped at
 `RAG_INGEST_MAX_ROWS` (default 2000). **Disclosed scope decision, not a
-hidden shortcut:** ingesting all 10M+ rows per language isn't a realistic
-hackathon-timeline operation (embedding cost and time alone rule it out);
-the cap uses real, unmodified rows from the real dataset, just a bounded
-number of them. Raise `RAG_INGEST_MAX_ROWS` for a larger index if time/
-budget allows before submission.
+hidden shortcut:** ingesting a full shard (millions of rows) isn't a
+realistic hackathon-timeline operation (embedding cost and time alone
+rule it out); the cap uses real, unmodified rows from the real shard,
+just a bounded number of them. Raise `RAG_INGEST_MAX_ROWS` for a larger
+index if time/budget allows before submission.
 
 `datasets` is soft-imported — if it's not installed, `load_msmarco_xi()`
 falls back to a small local fixture built from the dataset card's own
@@ -412,12 +452,41 @@ upgrade later; that's a new external dependency/cost decision, which
 
 ### Generation Provider Chain (`app/ai/retry.py`, `app/ai/groq_client.py`)
 
-Wraps the generation call in both RAG-serving paths (`document_rag` and
-`knowledge_base_rag`) — not a blanket change to every call site (weather,
-plain chat, tool search), since this was scoped to "the RAG path
-specifically, since that's what's graded." Two layers: per-provider retry
-(unchanged from the original single-provider version — see below), and,
-built on top of it, a **Groq-primary / Gemini-fallback chain**.
+Wraps every text-generation call the app makes to an LLM — RAG-serving
+(`document_rag`, `knowledge_base_rag`), tool-synthesis (the web-search
+results path), plain conversational chat, and non-streaming calls like
+`app/tools/weather.py`'s Gemini-fallback description. **This was
+initially scoped to "just the RAG path, since that's what's graded" and
+shipped that way** — but the plain-conversational path is the
+highest-traffic path in the whole router (everything that isn't a tool
+match, an attachment, or a knowledge-base match lands there), and it was
+still calling Gemini directly, unprotected. A live production leak
+confirmed this concretely: general chat (a weather question, "tell me
+about neem tree") showed raw `(Gemini error: 503 UNAVAILABLE...)` text as
+the answer — the exact bug this whole chain exists to prevent, just on a
+path that hadn't been wired up yet. Fixed by routing every text-
+generation call site through the same chain rather than re-scoping
+"RAG-only" more narrowly. Two layers: per-provider retry (unchanged from
+the original single-provider version — see below), and, built on top of
+it, a **Groq-primary / Gemini-fallback chain**.
+
+Two public entry points, same underlying chain: `stream_generation()`
+(streaming, used by everything in `router.py`) and `call_generation()`
+(non-streaming, returns a complete string — used by `weather.py`; built
+by reusing `stream_with_fallback` rather than a second parallel
+implementation, since a non-streaming call is just a one-chunk "stream"
+from this machinery's point of view).
+
+**Known remaining gap, not yet fixed:** the image-vision path
+(`stream_gemini_vision`, triggered by an uploaded image attachment) still
+calls Gemini directly, unprotected by this chain. Groq's OpenAI-
+compatible endpoint would need a different client function (multimodal
+message format, base64 image content, and a vision-capable model — not
+confirmed whether one exists on Groq or fits this app's needs) to
+participate in the same fallback pattern; that's a real gap, left
+deliberately unaddressed rather than silently built beyond what was asked
+for a text-generation-focused fix. Flagging it here so it doesn't get
+lost.
 
 **Why Groq is primary:** based on Groq's generally-published LPU-hardware
 inference speed (independent third-party benchmarks showing 3-5x faster
