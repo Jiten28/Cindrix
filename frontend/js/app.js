@@ -1,4 +1,56 @@
 (function () {
+  // ---------- theme (light/dark) ----------
+  // The actual data-theme attribute is already set (or left absent for the
+  // dark default) by the inline script in index.html's <head>, before this
+  // file ever loads, so there's no flash-of-wrong-theme here. This just
+  // wires the toggle button and keeps everything else in sync when it's
+  // pressed. See style.css's :root / [data-theme="light"] blocks for the
+  // actual color values (Design.md never documented light-mode hex values
+  // — checked docs + git history — so these are a new but Ember-Violet-
+  // consistent choice, not a rediscovery of an old one).
+  const THEME_KEY = "cindrix-theme";
+  const themeToggleBtn = document.getElementById("themeToggleBtn");
+
+  function currentTheme() {
+    return document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
+  }
+
+  function updateThemeToggleUI(theme) {
+    if (!themeToggleBtn) return;
+    const next = theme === "light" ? "dark" : "light";
+    const key = next === "light" ? "topbar.switchToLight" : "topbar.switchToDark";
+    const fallback = next === "light" ? "Switch to light theme" : "Switch to dark theme";
+    const label = window.CindrixI18n ? window.CindrixI18n.t(key, fallback) : fallback;
+    themeToggleBtn.textContent = theme === "light" ? "☀️" : "🌙";
+    themeToggleBtn.setAttribute("aria-label", label);
+    themeToggleBtn.title = label;
+    // Keep the i18n data attributes pointed at the *next* state's key too,
+    // so a language switch (i18n.js's applyTranslations) re-labels this
+    // button correctly without needing to know about theme state itself.
+    themeToggleBtn.setAttribute("data-i18n-aria-label", key);
+    themeToggleBtn.setAttribute("data-i18n-title", key);
+  }
+
+  function setTheme(theme, persist) {
+    document.documentElement.setAttribute("data-theme", theme);
+    if (persist) {
+      try { localStorage.setItem(THEME_KEY, theme); } catch (err) { /* private mode etc. */ }
+    }
+    updateThemeToggleUI(theme);
+    // Lets particle-sphere.js / starfield.js re-read the (now-changed)
+    // --accent/--text/--star-rgb custom properties instead of staying
+    // pinned to whatever they cached at creation time — see those files'
+    // "cindrix:themechange" listeners.
+    window.dispatchEvent(new CustomEvent("cindrix:themechange", { detail: { theme } }));
+  }
+
+  updateThemeToggleUI(currentTheme());
+  if (themeToggleBtn) {
+    themeToggleBtn.addEventListener("click", () => {
+      setTheme(currentTheme() === "light" ? "dark" : "light", true);
+    });
+  }
+
   // Two independent orb instances — landing orb (in-flow, unchanged from
   // Phase 2) and the docked chat orb (fixed, right-center). See
   // particle-sphere.js's factory refactor comment for why these are separate

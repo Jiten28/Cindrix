@@ -1,5 +1,20 @@
 /* ============================================================
    Cindrix — design tokens (from docs/Design.md)
+
+   Theme-aware tokens: dark is the default/only palette Design.md
+   documents (checked Design.md, Memory.md, PRD.md, and full git
+   history for a previously-chosen light palette — none exists;
+   PRD.md only lists "Dark/light theme toggle" as an unspecified
+   requirement bullet). The light values below are a new choice,
+   not a rediscovery of an old one — kept in the same Ember Violet
+   family (same accent hue, slightly deepened for AA contrast on a
+   light surface) rather than inventing an unrelated palette.
+
+   --*-rgb are the same colors as comma-separated R,G,B triplets so
+   hardcoded rgba(...) overlays elsewhere in this file (hover states,
+   glass-panel surfaces) can read rgba(var(--card-rgb), .55) and
+   automatically follow the active theme instead of staying pinned
+   to the dark hex values they were written against.
    ============================================================ */
 :root {
   --bg: #0A0A0C;
@@ -10,12 +25,40 @@
   --text: #F5F0FA;
   --text-secondary: rgba(245,240,250,.6);
 
+  --bg-rgb: 10,10,12;
+  --card-rgb: 26,22,32;
+  --text-rgb: 245,240,250;
+  --star-rgb: 255,255,255;
+
   --radius-md: 12px;
   --radius-lg: 20px;
   --radius-full: 999px;
 
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
   --composer-h: 96px;
+
+  color-scheme: dark;
+}
+
+/* Light theme — toggled via [data-theme="light"] on <html>, set by
+   app.js and persisted to localStorage (see initTheme() at the top of
+   app.js). Glow/accent stay in the same violet-amber family described
+   in Design.md; only surface/text tokens actually invert. */
+html[data-theme="light"] {
+  --bg: #FAF9FC;
+  --card: #FFFFFF;
+  --card-border: rgba(23,20,28,.1);
+  --accent: #7C4DEF;
+  --glow: #F0A34E;
+  --text: #17141C;
+  --text-secondary: rgba(23,20,28,.6);
+
+  --bg-rgb: 250,249,252;
+  --card-rgb: 255,255,255;
+  --text-rgb: 23,20,28;
+  --star-rgb: 23,20,28;
+
+  color-scheme: light;
 }
 
 * { box-sizing: border-box; }
@@ -82,7 +125,7 @@ ul { list-style: none; margin: 0; padding: 0; }
   flex-direction: column;
   gap: 20px;
   padding: 20px 16px;
-  background: rgba(26, 22, 32, 0.55);
+  background: rgba(var(--card-rgb), 0.55);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
   border-right: 1px solid var(--card-border);
@@ -172,7 +215,7 @@ ul { list-style: none; margin: 0; padding: 0; }
 }
 
 .chat-list li:hover, .explore-list li:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(var(--text-rgb), 0.06);
   color: var(--text);
 }
 
@@ -209,7 +252,7 @@ ul { list-style: none; margin: 0; padding: 0; }
 }
 
 .sidebar-footer-btn:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(var(--text-rgb), 0.06);
   color: var(--text);
 }
 
@@ -231,7 +274,7 @@ ul { list-style: none; margin: 0; padding: 0; }
   align-items: center;
   gap: 12px;
   padding: 14px 20px;
-  background: rgba(10, 10, 12, 0.72);
+  background: rgba(var(--bg-rgb), 0.72);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border-bottom: 1px solid transparent;
@@ -300,7 +343,7 @@ ul { list-style: none; margin: 0; padding: 0; }
 }
 
 .icon-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(var(--text-rgb), 0.06);
   color: var(--text);
 }
 
@@ -513,7 +556,7 @@ ul { list-style: none; margin: 0; padding: 0; }
 }
 
 .msg-action-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(var(--text-rgb), 0.08);
   color: var(--text);
 }
 
@@ -563,7 +606,7 @@ ul { list-style: none; margin: 0; padding: 0; }
 }
 
 .msg :not(pre) > code {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(var(--text-rgb), 0.08);
   padding: 1px 5px;
   border-radius: 5px;
   font-size: 0.9em;
@@ -589,7 +632,7 @@ ul { list-style: none; margin: 0; padding: 0; }
   text-align: left;
 }
 .msg th {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(var(--text-rgb), 0.06);
   font-weight: 600;
 }
 
@@ -706,14 +749,14 @@ ul { list-style: none; margin: 0; padding: 0; }
 }
 
 .attachment-chip #attachmentChipRemove:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(var(--text-rgb), 0.08);
   color: var(--text);
 }
 
 .attach-menu {
   max-width: 260px;
   margin: 0 auto 8px;
-  background: rgba(26, 22, 32, 0.92);
+  background: rgba(var(--card-rgb), 0.92);
   border: 1px solid var(--card-border);
   border-radius: var(--radius-lg);
   padding: 6px;
@@ -740,7 +783,7 @@ ul { list-style: none; margin: 0; padding: 0; }
 }
 
 .attach-menu-item:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(var(--text-rgb), 0.08);
 }
 
 .attach-menu-divider {
@@ -758,7 +801,7 @@ ul { list-style: none; margin: 0; padding: 0; }
   margin: 0 auto;
   padding: 8px 8px 8px 16px;
   border-radius: var(--radius-full);
-  background: rgba(26, 22, 32, 0.75);
+  background: rgba(var(--card-rgb), 0.75);
   border: 1px solid var(--card-border);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
@@ -832,7 +875,7 @@ ul { list-style: none; margin: 0; padding: 0; }
   top: 42px;
   right: 0;
   width: 220px;
-  background: rgba(26, 22, 32, 0.95);
+  background: rgba(var(--card-rgb), 0.95);
   border: 1px solid var(--card-border);
   border-radius: var(--radius-lg);
   padding: 6px;
@@ -905,7 +948,7 @@ ul { list-style: none; margin: 0; padding: 0; }
 }
 
 .stat-card {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(var(--text-rgb), 0.04);
   border: 1px solid var(--card-border);
   border-radius: var(--radius-md);
   padding: 12px 14px;
@@ -939,7 +982,7 @@ ul { list-style: none; margin: 0; padding: 0; }
 .bar-track {
   flex: 1;
   height: 10px;
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(var(--text-rgb), 0.06);
   border-radius: var(--radius-full);
   overflow: hidden;
 }
@@ -1068,7 +1111,7 @@ ul { list-style: none; margin: 0; padding: 0; }
 .auth-tabs {
   display: flex;
   gap: 4px;
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(var(--text-rgb), 0.04);
   border-radius: var(--radius-md);
   padding: 4px;
   margin-bottom: 4px;
@@ -1105,7 +1148,7 @@ ul { list-style: none; margin: 0; padding: 0; }
 }
 
 .form-input {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(var(--text-rgb), 0.04);
   border: 1px solid var(--card-border);
   border-radius: var(--radius-md);
   padding: 10px 12px;
@@ -1148,7 +1191,7 @@ ul { list-style: none; margin: 0; padding: 0; }
 .form-submit:hover { transform: scale(1.015); }
 
 .form-submit.secondary {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(var(--text-rgb), 0.06);
 }
 
 .form-divider {
@@ -1262,7 +1305,7 @@ ul { list-style: none; margin: 0; padding: 0; }
 }
 
 .password-toggle:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(var(--text-rgb), 0.08);
 }
 
 .password-requirements {

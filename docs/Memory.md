@@ -14,7 +14,111 @@
 > — fix it back to these two values rather than trusting what's already
 > written elsewhere as a source of truth.
 
-Last updated: end of Phase 4 (original roadmap); Hackathon Phase 5 in progress (see below)
+Last updated: Interface polish, core (sphere mouse-interactivity + light/dark theme toggle) — see entry immediately below. Hackathon Phase 5 (dataset/fallback fixes) still the most recent *hackathon-track* entry; this session's work was frontend-only and doesn't affect it.
+
+---
+
+## Interface Polish, Core — Sphere Mouse-Interactivity + Light/Dark Theme Toggle
+
+New. Frontend-only session (CSS/JS under `frontend/` only — `app/`,
+router.py, and anything RAG/STT/Groq/Gemini-related were explicitly out of
+scope and untouched). Picks up the two Phase-1-deferred items named in
+`Design.md`'s Implementation Status section and `Phases.md`'s Hackathon
+Track "Interface polish, core" line.
+
+**Important sequencing note:** `Phases.md`'s Hackathon Track status said
+this work should stay paused until Hackathon Phase 2 passes real-environment
+verification (`Testing.md` §17b), and that verification still hasn't
+happened — nothing in §17b is checked off, and this session didn't touch
+the RAG/STT/Groq backend at all, so that gate is unaffected either way.
+This work was done anyway, on explicit instruction this session, out of the
+sequence `Phases.md` otherwise documents. Flagging this rather than quietly
+rewriting the Hackathon Phase 2 status to look like the gate was cleared —
+it wasn't. See `Phases.md`'s updated status line for the honest phrasing.
+
+**1. Sphere mouse-interactivity (`frontend/js/particle-sphere.js`).**
+`Design.md` explicitly said this was "not built... states are driven purely
+by voice/chat lifecycle, not pointer input" — confirmed true by reading the
+file before starting. Built as two effects, both layered additively on top
+of the existing idle/listening/thinking/speaking state math (radius,
+rotation speed, per-particle wander/ripple formulas — none of it changed):
+- **Parallax tilt** — the whole sphere leans gently (~10° max) toward
+  wherever the cursor is on the page, not just when hovering the canvas
+  itself, eased frame-to-frame so it never snaps. Implemented as two small
+  additional single-axis rotations composed with the existing Y-axis
+  autonomous spin, applied before any per-state offset so listening's
+  wander and speaking's ripple still layer on top of it exactly as before.
+- **Local repulsion** — particles within a small radius of the actual
+  cursor (screen-space, post-projection) nudge away from it, falling off
+  to nothing past that radius. Applied last, after the 3D state motion and
+  projection, so it can't distort the state-driven shape.
+- Both skip entirely under `prefers-reduced-motion`, matching this file's
+  existing motion-sensitivity handling elsewhere.
+- Constants (`MAX_TILT`, `TILT_EASE`, `REPEL_RADIUS_FRAC`,
+  `REPEL_STRENGTH_FRAC`) were picked for "subtle" per Design.md's motion
+  principles but not tuned against a real cursor in a real browser — no
+  browser in this session's sandbox. Worth a quick live eyeball before
+  trusting the feel is right.
+
+**2. Light/dark theme toggle (`frontend/css/style.css`,
+`frontend/index.html`, `frontend/js/app.js`).** No light-mode hex values
+existed anywhere before this session — checked `Design.md`, `PRD.md`, and
+the full git log/diff history for a previously-chosen palette; `PRD.md`
+only ever listed "Dark/light theme toggle" as an unspecified requirement
+bullet. Chose new values in the same Ember Violet family (same accent hue,
+`#7C4DEF` — deepened slightly from `#9B6EF7` for AA contrast on a light
+surface; glow stays the amber `#F0A34E` unchanged in both themes) rather
+than inventing an unrelated palette — full table now in `Design.md`'s new
+"Light theme" subsection.
+- `style.css`: new `--*-rgb` triplet tokens (`--bg-rgb`, `--card-rgb`,
+  `--text-rgb`, `--star-rgb`) alongside the existing hex tokens, plus a
+  `html[data-theme="light"]` override block. Every hardcoded
+  `rgba(255,255,255,…)` / `rgba(26,22,32,…)` / `rgba(10,10,12,…)` surface
+  or hover color in the file was converted to read `rgba(var(--text-rgb),
+  …)` / `rgba(var(--card-rgb), …)` / `rgba(var(--bg-rgb), …)` instead, so
+  every one of those spots (sidebar, modals, dropdowns, form inputs, hover
+  states — audited line by line) follows the active theme automatically.
+  Deliberately left alone: drop shadows and modal scrims (stay dark in
+  both themes, standard pattern), and the accent/glow-based glows (violet/
+  amber rgba values) — those are theme-invariant identity colors, not
+  surface tokens.
+- **Known gap, not fixed**: `.msg pre`/inline-code-block styling still
+  reads from the `highlight.js` `atom-one-dark` CDN stylesheet
+  (`index.html`'s `<link>`), which stays dark regardless of theme — a
+  light hljs theme swap would need its own pass (a second CDN stylesheet
+  swapped in via the same `data-theme` attribute) and wasn't attempted
+  here to keep this session scoped to what was asked.
+- `index.html`: a small inline script in `<head>`, before any stylesheet
+  or the rest of the page loads, applies a saved `localStorage` theme to
+  `<html data-theme="…">` synchronously — avoids a flash-of-wrong-theme on
+  reload. A toggle button (🌙/☀️) was added to the topbar controls, next
+  to the existing voice/model/language selectors.
+- `app.js`: owns the actual toggle behavior — flips `data-theme`, persists
+  to `localStorage` (`cindrix-theme`), updates the button's icon/label
+  (via the existing `CindrixI18n.t()` helper, not a new i18n mechanism),
+  and dispatches a `cindrix:themechange` `CustomEvent` on `window` so other
+  modules can react without polling.
+- `particle-sphere.js` / `starfield.js`: both used to have hardcoded dark-
+  only RGB triplets (`ACCENT`/`MUTED` in the sphere, plain white stars).
+  Both now read the relevant CSS custom property (`--accent`/`--text` for
+  the sphere, `--star-rgb` for the starfield) via `getComputedStyle` at
+  creation time, and re-read it on `cindrix:themechange` — so toggling
+  the theme re-colors the sphere and starfield live, no reload needed.
+- **i18n note**: added `topbar.switchToLight` / `topbar.switchToDark` keys
+  to all four locale files (`en`/`es`/`fr`/`hi`) so the new toggle button's
+  label/tooltip translates like its sibling topbar controls do. This is
+  filling in one key on an *already-shipped* i18n system, not new i18n
+  feature work — Phase 4's i18n/mobile-responsiveness push itself is still
+  untouched and still paused per `Phases.md`.
+
+**Verified:** all four touched/added-to frontend JS files
+(`particle-sphere.js`, `starfield.js`, `app.js`, `i18n.js`) pass
+`node --check`. **Not verified:** no live browser in this session's
+sandbox, so the actual visual result (light theme, tilt/repel feel) hasn't
+been eyeballed — flagged above per-item where it matters most.
+
+**Not done:** `.msg pre`/hljs light-theme support (see gap above);
+tuning the mouse-interactivity constants against a real cursor.
 
 ---
 

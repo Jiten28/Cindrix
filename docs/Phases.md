@@ -198,10 +198,16 @@ voice pipeline, and updated docs. See `Memory.md` for the dated log entry.
   this session; **not yet verified against a real environment** (real
   Sarvam call, real MSMARCO-XI ingest, real Gemini-backed latency
   numbers) — see `Testing.md` section 17b for the exact remaining list.
-  This is the priority before anything else, including resuming the
-  paused interface-polish work below.
+  Still unverified as of the interface-polish work below — nothing in
+  §17b has been checked off, and that work was frontend-only and never
+  touched the RAG/STT/Groq backend, so this status is unchanged by it.
 - Interface polish, core (sphere mouse-interactivity, light/dark toggle)
-  and Interface polish, extended (i18n, mobile responsiveness — both
-  already built pre-hackathon-brief, just not yet resumed) — paused,
-  resume only after Hackathon Phase 2 passes real-environment
-  verification.
+  — **built**, on explicit instruction, ahead of Hackathon Phase 2's
+  real-environment verification rather than after it as originally
+  planned below. Flagging the out-of-sequence order rather than silently
+  rewriting Hackathon Phase 2's status to look cleared — it isn't. See
+  `Memory.md`'s "Interface Polish, Core" entry for what shipped and what's
+  still unverified within it (no live-browser QA pass was possible in
+  that session's sandbox).
+- Interface polish, extended (i18n, mobile responsiveness — both already
+  built pre-hackathon-brief) — still paused, unaffected by the above.

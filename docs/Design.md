@@ -35,6 +35,34 @@ Style direction: dark theme first, glassmorphism (translucent blurred panels),
 soft gradients, subtle shadows, rounded corners, floating particles in the
 background at low opacity.
 
+### Light theme
+
+No light-mode values existed anywhere in this project before the
+sphere-interactivity/theme-toggle session — checked this file, `Memory.md`,
+`PRD.md`, and full git history; `PRD.md` only ever listed "Dark/light theme
+toggle" as an unspecified requirement bullet. The values below are a new
+choice made during that session, kept in the same Ember Violet family
+(same accent hue, deepened slightly for AA contrast on a light surface)
+rather than an unrelated palette:
+
+| Role             | Hex / value               |
+| ---------------- | -------------------------- |
+| Background       | `#FAF9FC`                  |
+| Cards            | `#FFFFFF`                  |
+| Card border      | `rgba(23,20,28,.1)`        |
+| Accent           | `#7C4DEF`                  |
+| Glow             | `#F0A34E` (amber, unchanged) |
+| Text (primary)   | `#17141C`                  |
+| Text (secondary) | `rgba(23,20,28,.6)`        |
+
+Glow stays the same amber in both themes — it's the sphere/mic-state color,
+not a surface token, so it doesn't need to invert. Implemented via
+`html[data-theme="light"]` in `frontend/css/style.css`, toggled and
+persisted (`localStorage`) by `frontend/js/app.js`. Known gap: code-block
+syntax highlighting (`highlight.js`'s `atom-one-dark` CDN theme) stays dark
+in both themes — a light hljs theme swap wasn't attempted as part of this
+pass.
+
 ## Typography
 
 - Clean geometric sans-serif (e.g. Inter or similar) for UI text
@@ -135,6 +163,11 @@ drifted during the build:
   the original palette/motion spec) to keep the chat view from feeling empty
   once the sphere shrinks down from its landing-page size. Now uses the
   amber Ember Violet glow value — see Color Palette above.
-- **Sphere mouse-interactivity** — not built. Not in the current spec
-  above (states are driven purely by voice/chat lifecycle, not pointer
-  input); planned for a later phase if it turns out to be worth adding.
+- **Sphere mouse-interactivity** — **built**. A parallax tilt (whole
+  sphere leans gently toward the cursor's page position) plus a local
+  screen-space repulsion (particles near the actual cursor nudge away),
+  both layered additively on top of the existing idle/listening/thinking/
+  speaking state math in `particle-sphere.js` — no per-state radius/
+  rotation/offset logic changed. Skipped under `prefers-reduced-motion`,
+  same as the rest of that file's motion. See Memory.md's dated entry for
+  the session this shipped in.

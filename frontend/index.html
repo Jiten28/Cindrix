@@ -5,6 +5,25 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content" />
 <title>Cindrix</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+<script>
+  // Applied synchronously, before CSS/paint, so the page never flashes the
+  // wrong theme on load. Kept as a tiny inline script rather than folding
+  // into app.js (which loads at the end of body, after first paint) —
+  // see app.js's initTheme() for the toggle logic and localStorage key
+  // this reads/writes ("cindrix-theme").
+  (function () {
+    try {
+      var saved = localStorage.getItem("cindrix-theme");
+      if (saved === "light" || saved === "dark") {
+        document.documentElement.setAttribute("data-theme", saved);
+      }
+      // No saved preference: fall through to the dark default already
+      // baked into :root — no attribute needed.
+    } catch (e) {
+      // localStorage unavailable (privacy mode, etc.) — dark default stands.
+    }
+  })();
+</script>
 <link rel="stylesheet" href="css/style.css" />
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/i18next/23.11.5/i18next.min.js"></script>
@@ -63,6 +82,7 @@
         <select id="langSelect" class="voice-select lang-select" data-i18n-title="topbar.languageLabel" title="Language"></select>
         <select id="modelSelect" class="voice-select" title="AI model" data-i18n-title="topbar.modelSelectTitle"></select>
         <select id="voiceSelect" class="voice-select" title="Voice used for spoken replies during voice chat" data-i18n-title="topbar.voiceSelectTitle"></select>
+        <button class="icon-btn" id="themeToggleBtn" aria-label="Switch to light theme" title="Switch to light theme" data-i18n-aria-label="topbar.switchToLight" data-i18n-title="topbar.switchToLight">🌙</button>
         <div class="export-wrap">
           <button class="icon-btn" id="exportBtn" aria-label="Export conversation" title="Export conversation" data-i18n-aria-label="topbar.exportConversation" data-i18n-title="topbar.exportConversation">⬇</button>
           <div class="export-menu" id="exportMenu" hidden>

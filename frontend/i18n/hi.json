@@ -19,7 +19,9 @@
     "exportConversation": "बातचीत निर्यात करें",
     "exportMarkdown": "मार्कडाउन के रूप में निर्यात करें",
     "exportJson": "JSON के रूप में निर्यात करें",
-    "languageLabel": "भाषा"
+    "languageLabel": "भाषा",
+    "switchToLight": "लाइट थीम पर स्विच करें",
+    "switchToDark": "डार्क थीम पर स्विच करें"
   },
   "landing": {
     "title": "बुद्धिमान। रचनात्मक। असीमित।",

@@ -19,7 +19,9 @@
     "exportConversation": "Exporter la conversation",
     "exportMarkdown": "Exporter en Markdown",
     "exportJson": "Exporter en JSON",
-    "languageLabel": "Langue"
+    "languageLabel": "Langue",
+    "switchToLight": "Passer au thème clair",
+    "switchToDark": "Passer au thème sombre"
   },
   "landing": {
     "title": "Intelligent. Créatif. Illimité.",
