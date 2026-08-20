@@ -255,7 +255,7 @@ def load_msmarco_xi(
             settings.RAG_DATASET_NAME,
             data_files={split: shard_path},
             split=split,
-            streaming=True,
+            streaming=False,
         )
     except Exception as e:
         logger.error(
@@ -333,4 +333,3 @@ def load_msmarco_xi(
             "every match in this shard was used)",
             scanned, shard_path, matched, target_lang_code, max_rows,
         )
-
