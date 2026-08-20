@@ -122,8 +122,11 @@ def stream_groq(prompt: str, model: Optional[str] = None) -> Generator[str, None
             yield f"(Groq error: {response.status_code} {body})"
             return
 
-        for line in response.iter_lines(decode_unicode=True):
-            if not line or not line.startswith("data: "):
+        for line in response.iter_lines(decode_unicode=False):
+            if not line:
+                continue
+            line = line.decode("utf-8")
+            if not line.startswith("data: "):
                 continue
             payload = line[len("data: "):]
             if payload.strip() == "[DONE]":
