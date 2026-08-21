@@ -1,20 +1,4 @@
-"""Web and image search via Tavily.
-
-Second revision of this file. General web search briefly used Gemini's
-built-in Google Search grounding tool — reverted because that tool
-effectively requires a *billed* Google Cloud project to get meaningful
-quota; on a plain free-tier API key it 429s almost immediately
-(RESOURCE_EXHAUSTED) while normal (non-grounded) generation keeps working
-fine, since only grounding is gated this way. That distinction wasn't
-caught before shipping it — see Memory.md's Post-Launch Fixes. Both general
-and image search now go through Tavily, which was already in use for image
-search and confirmed working on its free tier (1,000 credits/month, no
-card).
-
-Originally, before that, this was Google Custom Search JSON API — replaced
-because Google closed that API to new customers in 2025 and shuts it down
-entirely January 1, 2027.
-"""
+"""Web and image search via Tavily."""
 
 from typing import List, Optional
 
@@ -55,9 +39,7 @@ def _tavily_request(query: str, num: int, include_images: bool) -> Optional[dict
 
 
 def web_search(query: str, num: int = 5) -> List[dict]:
-    """Returns a list of {title, link, snippet} dicts, empty list on
-    failure. The real failure reason is printed to the server console
-    either way."""
+    """List of {title, link, snippet} dicts; empty on failure."""
     js = _tavily_request(query, num, include_images=False)
     if js is None:
         return []
@@ -71,8 +53,7 @@ def web_search(query: str, num: int = 5) -> List[dict]:
 
 
 def image_search(query: str, num: int = 5) -> List[dict]:
-    """Returns a list of {title, link, snippet} dicts (snippet always empty
-    for images), empty list on failure."""
+    """List of {title, link, snippet} dicts (snippet always empty); empty on failure."""
     js = _tavily_request(query, num, include_images=True)
     if js is None:
         return []

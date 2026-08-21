@@ -1,9 +1,4 @@
-"""Minimal smoke test — the first real automated test in this repo (see
-docs/Memory.md's Known Issues: "no automated tests yet" was true until this).
-Doesn't require a real GOOGLE_API_KEY — just confirms the app factory wires
-up correctly and /health responds, which is exactly what CI checks on every
-push.
-"""
+"""Smoke tests for the app factory and the basic endpoints. No API key needed."""
 
 import os
 import sys

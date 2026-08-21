@@ -1,13 +1,4 @@
-"""User account storage — JSON-based, consistent with the rest of the
-project's file storage (see Memory.md's architecture decisions). Passwords
-are hashed with werkzeug's built-in helpers (already a Flask dependency, no
-new library needed).
-
-Admin status: the first user ever created is auto-flagged admin (simplest
-possible bootstrap), OR any account whose email is in settings.ADMIN_EMAILS
-— computed dynamically in _public() so it reflects the current .env even for
-accounts created before that email was added to the list.
-"""
+"""JSON-backed user accounts; passwords hashed via werkzeug."""
 
 import json
 import os
@@ -47,9 +38,7 @@ def _save(users: List[Dict]) -> None:
 
 
 def _public(user: Dict) -> Dict:
-    """Strips the password hash before returning a user to the frontend.
-    is_admin is computed here (stored flag OR email in ADMIN_EMAILS) so
-    every read reflects the current .env, not just what was true at signup."""
+    """Strip the password hash; compute is_admin (stored flag or email in ADMIN_EMAILS) fresh each read."""
     result = {k: v for k, v in user.items() if k != "password_hash"}
     result["is_admin"] = bool(user.get("is_admin")) or (
         user.get("email", "").strip().lower() in settings.ADMIN_EMAILS
@@ -58,7 +47,7 @@ def _public(user: Dict) -> Dict:
 
 
 def validate_password_strength(password: str) -> Optional[str]:
-    """Returns an error message if the password is too weak, None if it's fine."""
+    """Error message if the password is too weak, else None."""
     if len(password) < 8:
         return "Password must be at least 8 characters."
     if not re.search(r"[a-z]", password):
@@ -96,7 +85,7 @@ def create_user(username: str, email: str, password: str) -> Dict:
         "password_hash": generate_password_hash(password),
         "display_name": username.strip(),
         "default_voice": "",
-        "is_admin": len(users) == 0,  # first user is admin (also see ADMIN_EMAILS in _public)
+        "is_admin": len(users) == 0,  # first user is admin
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     users.append(user)
@@ -123,9 +112,7 @@ def list_users() -> List[Dict]:
 
 
 def update_user(user_id: str, fields: Dict) -> Optional[Dict]:
-    """Allows updating display_name and default_voice only — anything else
-    (email, username, is_admin) needs a more deliberate path than a generic
-    profile-update endpoint."""
+    """Only display_name and default_voice can be updated here."""
     allowed = {"display_name", "default_voice"}
     users = _load()
     for u in users:
@@ -139,8 +126,7 @@ def update_user(user_id: str, fields: Dict) -> Optional[Dict]:
 
 
 def change_password(user_id: str, current_password: str, new_password: str) -> Optional[str]:
-    """Returns None on success, or an error message string on failure —
-    distinguishes 'wrong current password' from 'new password too weak'."""
+    """None on success, else an error message string."""
     weakness = validate_password_strength(new_password)
     if weakness:
         return weakness

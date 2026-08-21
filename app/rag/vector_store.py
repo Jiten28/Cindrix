@@ -1,20 +1,6 @@
-"""Real vector store — replaces the hand-rolled brute-force cosine loop
-that used to live directly in app/ai/embeddings.py's top_k_chunks().
-
-Backed by FAISS (IndexFlatIP for small collections — exact, just no longer
-a hand-written Python loop; IndexIVFFlat for large ones, a genuine
-approximate-nearest-neighbor index) when available. FAISS isn't always
-installed (e.g. this was built in a sandboxed session with no network to
-pip-install it) — soft-imported, with an exact numpy-based fallback that
-keeps the app running (correctly, just without FAISS's speed/scale
-benefits) rather than crashing. The fallback logs a warning every time a
-store is built so it's never silently mistaken for the real thing in a
-demo or benchmark.
-
-Vectors are L2-normalized on insert so inner product == cosine similarity
-— this is what lets one index type (IndexFlatIP) serve both "exact search"
-and "cosine similarity" without needing two different metrics.
-"""
+"""FAISS-backed vector store (IndexFlatIP for small collections, IndexIVFFlat for
+large ones) with an exact numpy fallback when faiss isn't installed. Vectors are
+L2-normalized on insert so inner product == cosine similarity."""
 
 import json
 import logging
@@ -32,12 +18,9 @@ try:
 except ImportError:
     _FAISS_AVAILABLE = False
 
-# Above this many vectors, use an IVF (inverted file) index instead of a
-# flat one — flat is exact but O(n) per query, fine up to a few tens of
-# thousands of vectors; IVF trades a small amount of recall for real
-# sublinear search time at MSMARCO-XI's scale.
+# Above this many vectors, use an approximate IVF index instead of an exact flat one.
 _IVF_THRESHOLD = 10_000
-_IVF_NLIST = 100  # number of coarse clusters FAISS partitions vectors into
+_IVF_NLIST = 100  # coarse clusters FAISS partitions vectors into
 
 
 def _normalize(vectors: np.ndarray) -> np.ndarray:
@@ -47,23 +30,19 @@ def _normalize(vectors: np.ndarray) -> np.ndarray:
 
 
 class VectorStore:
-    """One store = one collection of (vector, chunk_text, metadata) triples
-    plus whatever index structure is searching them. Doesn't know or care
-    whether it's holding a handful of per-upload document chunks or a few
-    thousand MSMARCO-XI passages — same class either way."""
+    """A collection of (vector, chunk_text, metadata) triples plus its search index."""
 
     def __init__(self, dim: int):
         self.dim = dim
         self._chunks: List[str] = []
         self._metadata: List[Dict[str, Any]] = []
-        self._vectors: Optional[np.ndarray] = None  # only kept for the numpy fallback path
+        self._vectors: Optional[np.ndarray] = None  # only kept for the numpy fallback
         self._faiss_index = None
         self._backend = "faiss" if _FAISS_AVAILABLE else "numpy_fallback"
         if not _FAISS_AVAILABLE:
             logger.warning(
                 "[rag.vector_store] faiss not installed — using an exact "
-                "numpy fallback (correct, but not what's meant by 'real "
-                "vector store' for the hackathon submission). "
+                "numpy fallback (correct, but slow at scale). "
                 "`pip install faiss-cpu` and rebuild the index before relying "
                 "on this for real scale/latency numbers."
             )
@@ -96,18 +75,16 @@ class VectorStore:
             index = faiss.IndexFlatIP(self.dim)
             index.add(first_batch)
             return index
-        # IVF needs training on representative vectors before it can add —
-        # use this first batch as the training set.
+        # IVF must be trained before it can add; use the first batch as training data.
         quantizer = faiss.IndexFlatIP(self.dim)
         index = faiss.IndexIVFFlat(quantizer, self.dim, _IVF_NLIST, faiss.METRIC_INNER_PRODUCT)
         index.train(first_batch)
         index.add(first_batch)
-        index.nprobe = min(10, _IVF_NLIST)  # how many clusters to search — recall/speed tradeoff
+        index.nprobe = min(10, _IVF_NLIST)  # clusters searched — recall/speed tradeoff
         return index
 
     def search(self, query_vector: List[float], k: int = 4) -> List[Tuple[str, float, Dict[str, Any]]]:
-        """Returns up to k (chunk_text, cosine_similarity, metadata)
-        triples, best first."""
+        """Returns up to k (chunk_text, cosine_similarity, metadata) triples, best first."""
         if not self._chunks:
             return []
         q = _normalize(np.asarray([query_vector], dtype="float32"))
@@ -121,8 +98,7 @@ class VectorStore:
                 results.append((self._chunks[idx], float(score), self._metadata[idx]))
             return results
 
-        # numpy fallback — exact cosine via a single vectorized matmul
-        # rather than embeddings.py's old per-pair Python loop.
+        # numpy fallback: exact cosine via one vectorized matmul.
         sims = (self._vectors @ q[0])
         top_idx = np.argsort(-sims)[:k]
         return [(self._chunks[i], float(sims[i]), self._metadata[i]) for i in top_idx]
@@ -133,8 +109,7 @@ class VectorStore:
     # -- persistence -----------------------------------------------------
 
     def save(self, path: str) -> None:
-        """Saves to <path>.meta.json (chunks/metadata) + <path>.faiss or
-        <path>.npy (the vectors/index itself, depending on backend)."""
+        """Saves <path>.meta.json (chunks/metadata) plus <path>.faiss or <path>.pkl."""
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         with open(f"{path}.meta.json", "w", encoding="utf-8") as f:
             json.dump({

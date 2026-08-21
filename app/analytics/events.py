@@ -1,10 +1,4 @@
-"""Analytics event logging + summary aggregation for the dashboard.
-
-Simple JSON-lines-style storage (one JSON list, appended to) — consistent
-with the rest of the project's file-based storage (see Memory.md's
-architecture decisions on JSON vs SQLite). Fine at hobby-project scale;
-revisit if this file grows large enough that appending gets slow.
-"""
+"""Analytics event logging + summary aggregation, stored as one JSON list."""
 
 import json
 import os
@@ -79,7 +73,7 @@ def summary(days: int = 14, user_id: Optional[str] = None) -> Dict:
 
 
 def messages_per_user() -> Dict[str, int]:
-    """Used by the admin panel — how many chat turns each user has sent."""
+    """Chat-turn count per user, for the admin panel."""
     events = [e for e in _load() if e.get("event_type") == "chat_turn"]
     counts: Dict[str, int] = defaultdict(int)
     for e in events:

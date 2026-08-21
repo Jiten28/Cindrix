@@ -1,20 +1,11 @@
-"""Sarvam AI speech-to-text client — the hackathon-compliant STT provider.
+"""Sarvam AI speech-to-text client.
 
-The hackathon task requires Sarvam or ElevenLabs for STT; Web Speech API
-(frontend/js/app.js, unchanged) doesn't qualify for the graded submission
-but stays as the free, key-less dev/fallback path. See
-app.config.settings.STT_PROVIDER for the switch, and docs/Architecture.md
-for why Sarvam was picked over ElevenLabs (Indic-language focus, matching
-the ai4bharat/MSMARCO-XI corpus this app retrieves against).
-
-API reference (fetched directly from Sarvam's live docs while building
-this, not from training-data memory, since API specifics like endpoint
-paths and header names go stale fast):
     POST https://api.sarvam.ai/speech-to-text
     header: api-subscription-key: <key>
-    multipart form: file=<audio>, model, mode, language_code, ...
-    200 response: {"request_id", "transcript", "language_code", ...}
-    errors: 400/403/422/429/500/503, each {"error": {"message", "code", ...}}
+    multipart form: file=<audio>, model, language_code
+    200: {"transcript", "language_code", ...}; errors: {"error": {...}}
+
+The browser Web Speech API stays as the keyless dev fallback; STT_PROVIDER switches.
 """
 
 import logging
@@ -35,15 +26,12 @@ class TranscriptionResult(TypedDict):
     transcript: str
     language_code: Optional[str]
     provider: str
-    error: Optional[str]  # user-facing, friendly — never the raw exception
+    error: Optional[str]  # friendly text only — never the raw exception
 
 
 def transcribe_audio(audio_bytes: bytes, mime_type: str, filename: str = "audio.webm") -> TranscriptionResult:
-    """Sends recorded audio to Sarvam's REST STT endpoint and returns a
-    structured result — never raises. Matches Rules.md's error handling
-    policy: friendly message back to the caller, technical detail only to
-    the log.
-    """
+    """Send recorded audio to Sarvam's STT endpoint. Never raises; returns a
+    friendly error string on failure and logs the technical detail."""
     if not settings.SARVAM_API_KEY:
         logger.warning("[stt] STT_PROVIDER=sarvam but SARVAM_API_KEY is not set")
         return TranscriptionResult(
@@ -95,10 +83,8 @@ def transcribe_audio(audio_bytes: bytes, mime_type: str, filename: str = "audio.
             error=None,
         )
 
-    # Non-200 — log the technical detail, return a friendly message.
-    # 429/503 specifically are the transient cases worth naming distinctly
-    # (rate limit / temporary overload) since the frontend can choose to
-    # suggest "try again" differently than a hard failure like 403.
+    # Non-200 — log the technical detail, return a friendly message. 429/503
+    # are named distinctly so the frontend can suggest "try again" for those.
     logger.error("[stt] Sarvam error %s: %s", response.status_code, response.text[:500])
     friendly = {
         400: "Voice input wasn't understood — try speaking again.",

@@ -1,27 +1,4 @@
-"""Latency harness — Priority 3.
-
-Instruments the RAG pipeline stage by stage per query (embed query ->
-vector retrieval -> generation) across a set of test queries, and reports
-P50/P70/P100 for each stage plus end-to-end. Target from the hackathon
-brief: under 200ms end-to-end.
-
-Scope note, disclosed rather than hidden: chunking + embedding the corpus
-(app/rag/ingest.py) is a one-time INGEST-time cost, not something a live
-query pays — a real user's question doesn't wait for the whole dataset to
-re-chunk. This harness reports ingest cost once, separately, and measures
-what an actual deployed query actually pays: embed the query, search the
-index, generate the answer. Re-chunking the corpus per query would be
-straightforwardly bad engineering, not a stricter reading of "instrument
-the full pipeline" — see docs/Architecture.md's Latency Harness section.
-
-Honesty note this module enforces in its own output: five to ten test
-queries produce a real P50/P70 but not a statistically rigorous one — the
-report says so rather than presenting these numbers with false precision.
-And when GOOGLE_API_KEY/network aren't available (e.g. this was built in
-a sandboxed session with neither), running this produces a report clearly
-marked as a self-test of the harness mechanics, not a production number —
-see run_benchmark()'s `is_self_test` field.
-"""
+"""Latency harness: per-stage and end-to-end P50/P70/P100 for the RAG pipeline."""
 
 import argparse
 import json
@@ -56,15 +33,11 @@ class QueryTiming:
     generate_ms: float
     total_ms: float
     grounded: bool
-    served_by: Optional[str] = None  # "Groq (primary)" / "Gemini (fallback)" / None if ungrounded
+    served_by: Optional[str] = None  # e.g. "Groq (primary)"; None if ungrounded
 
 
 class _ProviderCapture(logging.Handler):
-    """Temporarily attached to app.ai.retry's logger for the duration of
-    one generation call, to capture which provider actually served the
-    response — stream_generation() only logs this (production doesn't
-    need it as a return value), so the benchmark reads it off the log
-    record rather than changing that function's public interface."""
+    """Captures which provider served a call by reading app.ai.retry log records."""
 
     def __init__(self):
         super().__init__()
@@ -73,8 +46,6 @@ class _ProviderCapture(logging.Handler):
     def emit(self, record):
         msg = record.getMessage()
         if "response served by" in msg:
-            # "[retry] response served by Groq (primary)" or
-            # "... by Gemini (fallback, after Groq failed)"
             self.served_by = msg.split("response served by", 1)[1].strip()
 
 
@@ -88,8 +59,7 @@ def percentile(values: List[float], pct: float) -> float:
 
 
 def time_one_query(query: str, model: Optional[str] = None) -> QueryTiming:
-    """Times the three live, per-query stages. Does NOT include ingest-time
-    chunking/embedding — see module docstring."""
+    """Time the three live per-query stages: embed, retrieve, generate."""
     store = get_kb_store()
 
     t0 = time.perf_counter()
@@ -111,7 +81,7 @@ def time_one_query(query: str, model: Optional[str] = None) -> QueryTiming:
         retry_logger.addHandler(capture)
         try:
             for _chunk in stream_generation(prompt, model=model):
-                pass  # timing generation, not collecting the text here
+                pass  # drain the stream for timing, not the text
         finally:
             retry_logger.removeHandler(capture)
         served_by = capture.served_by
@@ -187,7 +157,7 @@ def run_benchmark(queries: Optional[List[str]] = None, model: Optional[str] = No
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Latency benchmark for the RAG pipeline (Priority 3).")
+    parser = argparse.ArgumentParser(description="Latency benchmark for the RAG pipeline.")
     parser.add_argument("--model", default=None)
     parser.add_argument("--out", default="data/rag_index/latency_report.json")
     args = parser.parse_args()

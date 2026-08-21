@@ -1,10 +1,4 @@
-"""Multi-conversation storage, now scoped per user (Phase 4). Each user_id
-gets its own subdirectory — data/conversations/<user_id>/<conv_id>.json plus
-an _index.json for fast listing. Not logging in still works: everything
-lands under data/conversations/guest/, same shared-bucket behavior Phase 3
-had for everyone, now just scoped to one bucket among many instead of the
-only one.
-"""
+"""Per-user multi-conversation storage, backed by JSON files."""
 
 import json
 import os

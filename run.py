@@ -1,5 +1,4 @@
-"""Entry point — replaces `python gemini_retrieval.py` as the way to run
-Cindrix from Phase 1 onward."""
+"""Entry point — runs the Cindrix Flask app."""
 
 from app import create_app
 from app.config import settings

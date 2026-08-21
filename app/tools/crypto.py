@@ -1,10 +1,10 @@
-"""Crypto price lookup tool. Ported directly from gemini_retrieval.py."""
+"""Crypto price lookup via CoinGecko."""
 
 from typing import Optional
 
 import requests
 
-# Small alias map so "bitcoin", "btc" both resolve — same behavior as before.
+# So "btc" and "bitcoin" both resolve.
 _ALIASES = {
     "btc": "bitcoin",
     "eth": "ethereum",

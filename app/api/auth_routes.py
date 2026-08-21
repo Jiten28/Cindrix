@@ -1,7 +1,4 @@
-"""Authentication + profile endpoints. Session-based (Flask's signed-cookie
-session), not token-based — simplest fit for a server-rendered-ish SPA
-talking to its own backend on the same origin.
-"""
+"""Auth + profile endpoints — session-based (Flask signed cookie), same-origin."""
 
 from flask import Blueprint, jsonify, request, session
 

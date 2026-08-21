@@ -1,19 +1,8 @@
-"""Gemini API client.
+"""Gemini API client (google-genai SDK).
 
-Rebuilt on the google-genai SDK (the google-generativeai package this
-originally used, and the gemini-1.5-flash model it called, were both fully
-deprecated/shut down by Google — see the 404 error that confirmed this).
-Function names and behavior are unchanged so nothing calling this module
-needs to change.
-
-Phase 4: call_gemini/stream_gemini accept an optional model override (for
-the model selector UI) — validated against settings.GEMINI_MODEL_IDS (the
-Gemini-provider ids only, NOT the full AVAILABLE_MODELS list) rather than
-passed straight through. So an unexpected string from the client can't reach
-the API as a model name, AND a Groq id selected in the UI (which reaches this
-module only as the Gemini *fallback* leg of app/ai/retry.py) resolves to
-GEMINI_MODEL here instead of being sent to Gemini verbatim.
-"""
+An optional model override (for the selector UI) is validated against
+settings.GEMINI_MODEL_IDS, so an unexpected string can't reach the API as a model
+name and a Groq id resolves to GEMINI_MODEL on the fallback leg."""
 
 import json
 import re
@@ -25,9 +14,8 @@ from google.genai import types
 from app.config import settings
 
 _client: Optional[genai.Client] = None
-# Only the Gemini-provider ids are valid model overrides here — a Groq id
-# from the selector reaches this module only as retry.py's Gemini fallback,
-# and must resolve to GEMINI_MODEL, not be forwarded to the Gemini API.
+# Only Gemini-provider ids are valid overrides here; a Groq id reaching this
+# module (as retry.py's fallback leg) must resolve to GEMINI_MODEL, not be forwarded.
 _VALID_MODEL_IDS = settings.GEMINI_MODEL_IDS
 
 
@@ -45,8 +33,7 @@ def _get_client() -> genai.Client:
 
 
 def call_gemini(prompt: str, model: Optional[str] = None) -> str:
-    """Non-streaming call — used by tools that need a single complete answer
-    (e.g. the Gemini weather fallback, JSON-mode calls)."""
+    """Non-streaming call returning one complete answer."""
     if not settings.GOOGLE_API_KEY:
         return "Gemini is not configured (missing GOOGLE_API_KEY)."
     try:
@@ -72,8 +59,7 @@ def call_gemini_json(prompt: str) -> Optional[dict]:
 
 
 def stream_gemini(prompt: str, model: Optional[str] = None) -> Generator[str, None, None]:
-    """Streaming call — yields text chunks as Gemini generates them.
-    Used by app/api/routes.py for the chat-turn SSE response."""
+    """Streaming call — yields text chunks as Gemini generates them."""
     if not settings.GOOGLE_API_KEY:
         yield "Gemini is not configured (missing GOOGLE_API_KEY)."
         return
@@ -91,12 +77,7 @@ def stream_gemini(prompt: str, model: Optional[str] = None) -> Generator[str, No
 
 def stream_gemini_search(prompt: str, model: Optional[str] = None) -> Generator[str, None, None]:
     """Streaming call using Gemini's built-in Google Search grounding tool.
-
-    Replaces the old Custom Search JSON API path for general web search —
-    that API closed to new signups in 2025 and fully sunsets January 1,
-    2027 (see Memory.md). This uses the same GOOGLE_API_KEY already
-    configured for chat; no separate Custom Search API / CSE ID needed.
-    """
+    Uses the same GOOGLE_API_KEY as chat — no separate Custom Search API needed."""
     if not settings.GOOGLE_API_KEY:
         yield "Gemini is not configured (missing GOOGLE_API_KEY)."
         return
@@ -116,10 +97,8 @@ def stream_gemini_search(prompt: str, model: Optional[str] = None) -> Generator[
 
 
 def stream_gemini_vision(prompt: str, image_bytes: bytes, mime_type: str, model: Optional[str] = None) -> Generator[str, None, None]:
-    """Streaming call with an image attached — used for image understanding
-    (Phase 2). Also covers the OCR use case: Gemini reads text embedded in
-    images natively, so a scanned document just works here without a
-    separate OCR library."""
+    """Streaming call with an image attached. Also covers OCR — Gemini reads
+    text embedded in images natively, so no separate OCR library."""
     if not settings.GOOGLE_API_KEY:
         yield "Gemini is not configured (missing GOOGLE_API_KEY)."
         return

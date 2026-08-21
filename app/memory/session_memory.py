@@ -1,9 +1,4 @@
-"""Session memory — JSON-based, single shared history file.
-
-SUPERSEDED by conversation_store.py (Phase 3) — this file is kept only as a
-reference for what Phase 1/2 looked like before real multi-conversation
-storage existed. No route imports this anymore. See Memory.md.
-"""
+"""Legacy single-file JSON session history."""
 
 import json
 import os
@@ -42,6 +37,6 @@ def append_turn(history: List[Dict], role: str, content: str) -> List[Dict]:
 
 
 def recent_context(history: List[Dict], turns: int = 6) -> str:
-    """Flattens the last N turns into a plain-text block for prompting."""
+    """Flatten the last N turns into a plain-text block for prompting."""
     tail = history[-turns:]
     return "\n".join(f"{t['role']}: {t['content']}" for t in tail)

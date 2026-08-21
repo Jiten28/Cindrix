@@ -1,31 +1,6 @@
-"""Query routing — decides whether a message needs a tool (weather/crypto/
-search), an active attachment (RAG/vision), a knowledge-base RAG lookup
-(MSMARCO-XI, hackathon track), or a plain conversational answer.
-Ported from handle_query() in gemini_retrieval.py; still keyword-based for
-Phase 1 (Rules.md/Architecture.md flag upgrading this to real intent
-classification as a later-phase task — don't jump ahead of it).
-
-Phase 3 added detect_tool() as a single source of truth for "which path will
-this message take" — used both to actually answer it and to label the
-analytics event. Phase 4 threads user_id through (conversations and
-attachments are now per-user) and an optional model override (model
-selector UI).
-
-Hackathon Phase 2 (Priorities 2/4/5 — see docs/Memory.md's dated entry)
-added the knowledge_base_rag path: general queries (no tool intent, no
-active attachment) are checked against the persisted MSMARCO-XI vector
-store (app/rag/vector_store.py) before falling through to plain
-conversational answering. Guardrails (app/rag/guardrails.py) gate both
-ends of this — an unsafe-input check up front, and a grounding check on
-the retrieved passages before answering from them, declining honestly
-rather than letting Gemini improvise from weak/irrelevant context. Both
-RAG-serving generation calls (this new path and the existing document_rag
-one) go through app/ai/retry.py's stream_generation() — Groq primary,
-Gemini fallback, retried and error-recovered at each step — see that
-module's docstring for the real 503 this was originally built against and
-docs/Architecture.md's "Generation Provider Chain" section for the
-Groq-primary reasoning.
-"""
+"""Query routing: decide whether a message needs a tool (weather/crypto/search),
+an active attachment (RAG/vision), a knowledge-base lookup (MSMARCO-XI), or a plain
+conversational answer. Keyword-based classification."""
 
 import logging
 import re
@@ -46,12 +21,9 @@ from app.rag.vector_store import VectorStore
 
 logger = logging.getLogger(__name__)
 
-# Weather DETECTION — does this message ask about the weather at all? Broad
-# on purpose: the old pattern (`weather ... in <city>`) missed city-first
-# phrasing ("Hyderabad weather") and Hindi ("दिल्ली का मौसम"). City
-# extraction is a separate step (_extract_city) so detection doesn't have to
-# also parse out the location. Anything this catches but can't geocode falls
-# through to the Gemini estimate, so over-matching degrades gracefully.
+# Broad weather detection — catches "weather in X", city-first ("Hyderabad
+# weather"), and Hindi ("दिल्ली का मौसम"). City extraction is a separate step
+# (_extract_city); anything caught but not geocodable falls to the Gemini estimate.
 _WEATHER_RE = re.compile(r"\bweather\b|\bforecast\b|मौसम", re.IGNORECASE)
 _CRYPTO_RE = re.compile(r"\b(price of|cost of)\s+([a-zA-Z]+)", re.IGNORECASE)
 _SEARCH_RE = re.compile(r"\bsearch(?: for)?\s+(.+)", re.IGNORECASE)
@@ -62,11 +34,9 @@ _kb_store_load_attempted = False
 
 
 def get_kb_store() -> Optional[VectorStore]:
-    """Lazily loads the persisted MSMARCO-XI knowledge-base index (built by
-    `python -m app.rag.ingest`) once per process, cached afterward. Returns
-    None — not an error — if it hasn't been built yet, so a dev environment
-    with no index built falls straight through to the pre-hackathon plain
-    conversational behavior, unchanged."""
+    """Lazily load the persisted MSMARCO-XI index once per process (cached).
+    Returns None if no index has been built yet, so the app falls through to
+    plain conversational answering."""
     global _kb_store, _kb_store_load_attempted
     if _kb_store_load_attempted:
         return _kb_store
@@ -84,18 +54,15 @@ def get_kb_store() -> Optional[VectorStore]:
     return _kb_store
 
 
-# City EXTRACTION patterns, tried in order. City names can be non-ASCII
-# (Devanagari etc.), so none of these restrict the captured text to [a-zA-Z]
-# the way the old single pattern did.
-#   1. Hindi postposition:  "दिल्ली का मौसम" / "मुंबई में मौसम" — city precedes का/में/की/के
-#   2. English preposition: "weather in Delhi" / "forecast for New York" / "weather at Pune"
-#   3. City-first:          "Hyderabad weather" / "Delhi forecast"
+# City extraction patterns, tried in order. City names can be non-ASCII, so
+# none restrict the capture to [a-zA-Z]:
+#   1. Hindi postposition: "दिल्ली का मौसम"   2. English preposition: "weather in Delhi"
+#   3. city-first: "Hyderabad weather"
 _CITY_HINDI_RE = re.compile(r"(.+?)\s*(?:का|के|की|में)\s*(?:मौसम|तापमान)")
 _CITY_PREP_RE = re.compile(r"\b(?:in|for|at|of)\s+(.+)", re.IGNORECASE)
 _CITY_FIRST_RE = re.compile(r"(.+?)\s+(?:weather|forecast|temperature)\b", re.IGNORECASE)
 
-# Words that are never part of a city name but can survive into a capture —
-# stripped out before the candidate is handed to geocoding.
+# Filler words that can survive into a capture — stripped before geocoding.
 _CITY_NOISE_RE = re.compile(
     r"\b(weather|forecast|temperature|today|tonight|tomorrow|right now|now|"
     r"currently|like|what'?s|whats|what|is|the|please|tell me|it|there|"
@@ -105,9 +72,8 @@ _CITY_NOISE_RE = re.compile(
 
 
 def _clean_city(raw: str) -> str:
-    """Strips filler/weather words and stray punctuation from a candidate
-    city string. Returns '' if nothing meaningful is left (caller then uses
-    the default)."""
+    """Strip filler/weather words and punctuation from a candidate city.
+    Returns '' if nothing meaningful is left (caller uses the default)."""
     city = _CITY_NOISE_RE.sub("", raw)
     city = re.sub(r"\s+", " ", city).strip(" ?.!,-'\"")
     return city
@@ -125,18 +91,9 @@ def _extract_city(text: str, default: str = "your area") -> str:
 
 
 def detect_tool(user_input: str, attachment: Optional[Dict] = None) -> str:
-    """Pure classification, no side effects — mirrors the checks in
-    route_query()/stream_route_query() exactly, so analytics logging always
-    matches what actually answered the message.
-
-    "No side effects" here means no network calls (no embedding, no LLM
-    call) — knowledge_base_rag is labeled based on the query passing the
-    cheap guardrails.is_offtopic_for_kb heuristic and an index existing on
-    disk, NOT on whether retrieval actually finds a good match (that would
-    mean embedding the query twice — once here, once for real in
-    stream_route_query). A message labeled knowledge_base_rag can still
-    end up declining to answer if grounding turns out weak — see
-    stream_route_query below."""
+    """Pure classification (no network calls) — mirrors the checks in
+    stream_route_query so the analytics label matches what actually answered.
+    A knowledge_base_rag label can still end up declining if grounding is weak."""
     text = user_input.strip()
     if guardrails.is_unsafe(text):
         return "unsafe_declined"
@@ -159,10 +116,9 @@ def detect_tool(user_input: str, attachment: Optional[Dict] = None) -> str:
 
 
 def route_query(user_input: str, history: List[Dict]) -> str:
-    """Non-streaming route — used for tool-backed answers where there's no
-    meaningful token-by-token output (weather/crypto/image-search results).
-    General web search is handled in stream_route_query instead, since its
-    answer is synthesized through Gemini (streamed), not returned raw."""
+    """Non-streaming route for tool-backed answers (weather/crypto/image-search).
+    Web search is handled in stream_route_query since its answer is streamed
+    through Gemini. Returns '' when the message isn't a tool query."""
     text = user_input.strip()
 
     if _WEATHER_RE.search(text):
@@ -182,7 +138,7 @@ def route_query(user_input: str, history: List[Dict]) -> str:
             return "No image results found (or image search isn't configured — see .env.example)."
         return "\n".join(f"- {r['title']}: {r['link']}" for r in results)
 
-    return ""  # signals "not a tool query" — caller falls through to Gemini/search
+    return ""  # not a tool query — caller falls through to Gemini/search
 
 
 def stream_route_query(
@@ -192,21 +148,12 @@ def stream_route_query(
     model: Optional[str] = None,
     user_display_name: Optional[str] = None,
 ) -> Generator[str, None, None]:
-    """Streaming entry point used by the /api/chat SSE route. Tool answers are
-    yielded as one chunk (they're already complete); Gemini answers stream
-    token by token.
+    """Streaming entry point for /api/chat. Tool answers are yielded as one
+    chunk; model answers stream token by token.
 
-    Priority order: unsafe-input guardrail first (declines immediately,
-    before any tool/RAG/generation work happens), then explicit tool intent
-    (weather/crypto/search), then an active attachment (uploaded document →
-    RAG, uploaded image → vision), then the knowledge-base RAG path
-    (MSMARCO-XI, hackathon track — general queries only, see
-    guardrails.is_offtopic_for_kb), then a plain conversational answer. An
-    uploaded file doesn't hijack every message — "what's the weather" still
-    checks the weather even with a document attached — but once tool intent
-    is ruled out, the attachment gets first shot at answering before the
-    knowledge base or plain chat.
-    """
+    Order: unsafe-input guardrail, explicit tool intent (weather/crypto/search),
+    active attachment (document -> RAG, image -> vision), knowledge-base RAG,
+    then plain chat. A tool query still wins even with an attachment present."""
     if guardrails.is_unsafe(user_input):
         yield guardrails.UNSAFE_DECLINE_MESSAGE
         return
@@ -236,10 +183,6 @@ def stream_route_query(
             f"Search results:\n{context_block}\n\n"
             f"User question: {query}\nCindrix:"
         )
-        # Same generation provider chain as the RAG paths below — this
-        # used to call stream_gemini directly, which is exactly the raw-
-        # error-leak bug Priority 5 was meant to fix, just on a path that
-        # wasn't wired up yet. See app/ai/retry.py's stream_generation.
         yield from stream_generation(prompt, model=model)
         return
 
@@ -265,18 +208,14 @@ def stream_route_query(
                 f"Document excerpts:\n{context_block}\n\n"
                 f"User question: {user_input}\nCindrix:"
             )
-            # Priority 5 (retry) + Groq/Gemini fallback chain: this is
-            # graded RAG output — see app/ai/retry.py's stream_generation.
             yield from stream_generation(prompt, model=model)
             return
 
-    # ---- knowledge-base RAG (MSMARCO-XI, hackathon track) --------------
-    # Only attempted for queries that look worth checking against the
-    # corpus at all (guardrails.is_offtopic_for_kb screens out greetings/
-    # tool-shaped/trivial input) and only if an index has actually been
-    # built (`python -m app.rag.ingest`) — no index means this whole block
-    # is a no-op and behavior falls through to plain conversational,
-    # exactly as it worked before this priority existed.
+    # ---- knowledge-base RAG (MSMARCO-XI) -------------------------------
+    # Only for queries worth checking against the corpus (is_offtopic_for_kb
+    # screens out greetings/tool-shaped/trivial input) and only if an index
+    # has been built — otherwise this block is a no-op and behavior falls
+    # through to plain conversational.
     if not attachment and not guardrails.is_offtopic_for_kb(user_input, "general"):
         kb_store = get_kb_store()
         if kb_store is not None:
@@ -293,13 +232,10 @@ def stream_route_query(
                     f"Knowledge base excerpts:\n{context_block}\n\n"
                     f"User question: {user_input}\nCindrix:"
                 )
-                # Priority 5 (retry) + Groq/Gemini fallback chain: this is
-                # graded RAG output — see app/ai/retry.py's stream_generation.
                 yield from stream_generation(prompt, model=model)
                 return
-            # Retrieval ran but nothing cleared the relevance floor —
-            # Priority 4: decline visibly rather than let Gemini answer
-            # from weak/irrelevant context.
+            # Retrieval ran but nothing cleared the relevance floor — decline
+            # rather than answer from weak/irrelevant context.
             logger.info("[router] knowledge-base retrieval below relevance floor for: %r", user_input[:80])
             yield guardrails.DECLINE_MESSAGE
             return
@@ -311,11 +247,5 @@ def stream_route_query(
         f"User: {user_input}\nCindrix:"
     )
     # Plain conversational answer — same provider chain as the RAG paths
-    # (Groq primary, Gemini fallback, clean error if both fail). This was
-    # the actual source of the "(Gemini error: 503 UNAVAILABLE...)" leak
-    # confirmed live in production for general chat (weather questions,
-    # factual questions) — it's the most-hit path in the whole router
-    # (everything that isn't a tool, an attachment, or a knowledge-base
-    # match lands here), so it was the highest-impact place this bug
-    # could still exist even after Priority 5 supposedly fixed it.
+    # (Groq primary, Gemini fallback, clean error if both fail). Most-hit path.
     yield from stream_generation(prompt, model=model)

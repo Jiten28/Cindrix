@@ -1,6 +1,4 @@
-"""Basic admin panel API — user list + usage stats. Gated by is_admin on the
-requesting session's user (see app/auth/current_user.py — the first account
-ever created is auto-flagged admin)."""
+"""Admin panel API — user list + usage stats, gated by is_admin (first account is admin)."""
 
 from flask import Blueprint, jsonify
 

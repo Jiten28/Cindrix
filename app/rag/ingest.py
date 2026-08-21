@@ -1,16 +1,4 @@
-"""Ingests ai4bharat/MSMARCO-XI into a persisted VectorStore: dataset rows
--> metadata_aware_chunks (passages are already natural retrieval units,
-see chunking.py's docstring for why that strategy specifically) ->
-Gemini embeddings -> VectorStore.save().
-
-Run directly:
-    python -m app.rag.ingest [--language hi] [--split train]
-                              [--max-rows 2000] [--out data/rag_index/msmarco_xi_hi]
-
-Or call ingest() programmatically — app/rag/benchmark.py's latency harness
-needs a built index to benchmark retrieval against, so it can trigger this
-itself with a small max_rows for a quick self-contained run.
-"""
+"""Ingest ai4bharat/MSMARCO-XI into a persisted vector store."""
 
 import argparse
 import logging
@@ -25,16 +13,12 @@ from app.rag.vector_store import VectorStore
 
 logger = logging.getLogger(__name__)
 
-# Gemini's embed_content accepts a batch of texts per call — bounding batch
-# size keeps individual requests from growing unbounded as chunk counts
-# scale toward the full dataset.
+# Bound batch size so per-call requests don't grow unbounded with chunk count.
 _EMBED_BATCH_SIZE = 32
 
-# Ingest is a batch job, so it opts into embed_texts' 429 retry budget (the
-# free tier caps embeddings at ~100 contents/min — see docs/Memory.md). This
-# rides out the rate window and waits rather than silently dropping chunks,
-# so the persisted index is COMPLETE. Live query embedding does NOT set this
-# (it must fail fast, not hang the request); see app/ai/embeddings.py.
+# Batch job opts into the 429 retry budget (free tier caps embeddings at
+# ~100/min), riding out the rate window so the index is complete. Live query
+# embedding fails fast instead — it can't hang the request.
 _EMBED_MAX_RETRIES = 6
 
 
@@ -48,9 +32,7 @@ def ingest(
     max_rows: Optional[int] = None,
     index_path: Optional[str] = None,
 ) -> dict:
-    """Runs the full ingest pipeline; returns a stats dict rather than
-    printing directly, so callers (the CLI below, benchmark.py, tests) can
-    all use the same function."""
+    """Run the full pipeline; return a stats dict."""
     language = language or settings.RAG_DATASET_LANGUAGE
     split = split or settings.RAG_DATASET_SPLIT
     max_rows = max_rows if max_rows is not None else settings.RAG_INGEST_MAX_ROWS

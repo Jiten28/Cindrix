@@ -1,14 +1,4 @@
-"""Weather lookup tool.
-
-Real data comes from Open-Meteo (https://open-meteo.com) — keyless, free,
-no signup, ~10k calls/day. Two-step: its geocoding API resolves a city name
-to coordinates, then its forecast API returns the current conditions.
-Replaces the previous OpenWeatherMap path, which required OPENWEATHER_API_KEY
-(one more secret to provision on Render for a feature that has a perfectly
-good keyless provider). If Open-Meteo can't resolve the city or the request
-fails, we fall back to a Gemini best-effort estimate — the same fallback
-contract as before, so nothing downstream changes.
-"""
+"""Weather lookup: Open-Meteo, with a Gemini fallback."""
 
 from typing import Optional, Tuple
 
@@ -21,9 +11,7 @@ _GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"
 _FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 _TIMEOUT = 10
 
-# WMO weather interpretation codes -> human text. Open-Meteo reports current
-# conditions as a numeric WMO code (there's no text description field), so we
-# map it ourselves. Table per the WMO code list Open-Meteo documents.
+# Open-Meteo gives a numeric WMO code with no text field, so map it here.
 _WMO_CODE_TEXT = {
     0: "clear sky",
     1: "mainly clear", 2: "partly cloudy", 3: "overcast",
@@ -47,9 +35,7 @@ def _wmo_description(code: Optional[int]) -> str:
 
 
 def _geocode(city: str) -> Optional[Tuple[float, float, str]]:
-    """Resolves a city name to (latitude, longitude, display_name) via
-    Open-Meteo's keyless geocoding API. Returns None if nothing matches or
-    the request fails."""
+    """City name -> (lat, lon, display_name), or None on failure."""
     try:
         r = requests.get(
             _GEOCODE_URL,
@@ -64,7 +50,6 @@ def _geocode(city: str) -> Optional[Tuple[float, float, str]]:
         lat, lon = top.get("latitude"), top.get("longitude")
         if lat is None or lon is None:
             return None
-        # A readable label: "City, Country" (country may be absent for some hits).
         name = top.get("name") or city
         country = top.get("country")
         display = f"{name}, {country}" if country else name
@@ -74,8 +59,7 @@ def _geocode(city: str) -> Optional[Tuple[float, float, str]]:
 
 
 def get_weather_open_meteo(city: str) -> Optional[str]:
-    """Current weather via Open-Meteo (keyless). Returns a natural sentence,
-    or None on any failure so the caller can fall back to Gemini."""
+    """Current weather via Open-Meteo, or None on failure."""
     geo = _geocode(city)
     if not geo:
         return None
@@ -125,17 +109,10 @@ City: {city}
     if data and "temperature_C" in data and "description" in data:
         note = f" ({data.get('note')})" if data.get("note") else ""
         return f"The weather in {city} is about {data['temperature_C']}°C with {data['description']}.{note}"
-    # Plain-English fallback if the JSON-structured attempt above didn't
-    # come back usable — this is the call that used to leak raw
-    # "(Gemini error: ...)" text as the literal weather answer (call_gemini
-    # returning an error string is truthy, so `txt or "Sorry..."` let it
-    # through unchanged). Now goes through the same Groq-primary/Gemini-
-    # fallback/clean-error chain as every other generation call in the app.
     txt = call_generation(f"Briefly describe the current weather in {city}. Keep it to one sentence.")
     return txt or f"Sorry, I couldn't determine the weather for {city}."
 
 
 def get_weather(city: str) -> str:
-    """Public entry point used by the router: real data first (Open-Meteo,
-    keyless), Gemini best-effort estimate second."""
+    """Open-Meteo first, Gemini estimate as fallback."""
     return get_weather_open_meteo(city) or get_weather_gemini(city)

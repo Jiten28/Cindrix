@@ -1,9 +1,4 @@
-"""Small helper so every route that needs "whose data is this" doesn't
-repeat the same session-lookup-with-guest-fallback logic. Not logging in at
-all still works — everything just lands in a shared 'guest' bucket, same
-behavior as before Phase 4, so nothing breaks for someone who doesn't want
-to create an account.
-"""
+"""Current-user lookup with a shared 'guest' fallback."""
 
 from typing import Optional
 

@@ -1,11 +1,4 @@
-"""Document parsing + chunking for the RAG pipeline. Supports PDF, TXT, DOCX.
-
-No OCR library here on purpose — Gemini's vision endpoint reads text inside
-images natively (see app/ai/gemini_client.py's call_gemini_vision), which
-covers the scanned-document case without adding a Tesseract dependency. If a
-genuinely offline/no-API-call OCR path is ever needed, revisit this decision
-— see Rules.md on adding new major dependencies.
-"""
+"""Document parsing and chunking for RAG. Supports PDF, TXT, DOCX."""
 
 import os
 from typing import List
@@ -44,9 +37,7 @@ def _extract_txt(filepath: str) -> str:
 
 
 def chunk_text(text: str, chunk_size: int = 800, overlap: int = 120) -> List[str]:
-    """Simple character-based chunking with overlap. Good enough for a
-    single-document RAG use case; swap for a sentence-aware splitter if
-    retrieval quality becomes an issue with real documents."""
+    """Character-based chunking with overlap."""
     text = text.strip()
     if not text:
         return []

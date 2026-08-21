@@ -1,17 +1,6 @@
-"""Automated tests for the hackathon-track RAG additions (Priorities 2/4/5
-— chunking, vector store, guardrails, retry) plus the Aug-2026 hackathon
-push (parquet ingest bypass, provider-routing model selector, broadened
-weather/city extraction). Runs for real in CI (see .github/workflows/ci.yml
-— installs from requirements.txt, so faiss-cpu/huggingface_hub/pyarrow/numpy
-are genuinely present there, unlike the sandboxed session this was
-originally built and manually verified in — see docs/Memory.md and
-docs/Testing.md section 17 for that distinction).
-
-Doesn't require GOOGLE_API_KEY for anything except the embeddings-backed
-top_k_chunks test, which mocks embed_query rather than calling the real
-API — consistent with how the rest of this project's test suite avoids
-needing a real key (see test_health.py).
-"""
+"""Tests for the RAG path: chunking, vector store, guardrails, retry/fallback,
+parquet ingest, provider routing, and weather/city extraction. No real API key
+needed — the embedding-backed paths are mocked."""
 
 import os
 import sys
@@ -25,8 +14,7 @@ from app.rag.dataset import _shard_path, resolve_target_lang_code
 from app.rag.guardrails import check_grounding, is_offtopic_for_kb, is_unsafe
 from app.rag.vector_store import VectorStore
 
-# The dataset card's own documented example row — same shape used
-# throughout app/rag/dataset.py's fixture, kept in sync deliberately.
+# The dataset card's documented example row.
 _SAMPLE_ROW = {
     "query": "मेनहाटन प्रकल्प की सफलता का तत्काल प्रभाव क्या था?",
     "query_id": 1185869,
@@ -66,8 +54,6 @@ def test_semantic_chunks_never_splits_a_sentence():
     chunks = semantic_chunks(prose, target_size=80, min_size=20)
     assert len(chunks) >= 2
     rejoined = " ".join(c.text for c in chunks)
-    # every sentence-ending period in the original appears in some chunk's
-    # text, not orphaned mid-chunk with its second half elsewhere
     for sentence in prose.split(". "):
         stripped = sentence.strip().rstrip(".")
         assert any(stripped in c.text for c in chunks), f"sentence fragment lost: {stripped!r}"
@@ -169,7 +155,7 @@ def test_retry_recovers_from_transient_error():
         else:
             yield "real answer"
 
-    with patch("app.ai.retry.time.sleep"):  # don't actually wait during tests
+    with patch("app.ai.retry.time.sleep"):
         result = list(stream_with_retry(flaky))
     assert result == ["real answer"]
     assert call_count[0] == 2
@@ -184,7 +170,7 @@ def test_retry_gives_up_after_max_attempts_with_friendly_message():
     with patch("app.ai.retry.time.sleep"):
         result = list(stream_with_retry(always_fails))
     assert len(result) == 1
-    assert "503" not in result[0]  # never leak the raw error to the user
+    assert "503" not in result[0]
     assert "temporary issue" in result[0]
 
 
@@ -198,7 +184,7 @@ def test_retry_does_not_retry_nontransient_errors():
         yield "(Gemini error: 403 PERMISSION_DENIED. bad api key)"
 
     result = list(stream_with_retry(auth_error))
-    assert call_count[0] == 1  # no retry wasted on a non-transient error
+    assert call_count[0] == 1  # non-transient — no retry
     assert "temporary issue" in result[0]
 
 
@@ -215,11 +201,6 @@ def test_retry_closes_gracefully_on_mid_stream_failure():
 
 
 # --- Groq-primary / Gemini-fallback generation provider chain -------------
-# See app/ai/retry.py's stream_with_fallback/stream_generation and
-# docs/Architecture.md's "Generation Provider Chain" section. Groq is
-# primary (published-benchmark rationale — see that doc section for the
-# honest caveat that this project's own benchmark.py hasn't confirmed it
-# yet), Gemini is the fallback if Groq exhausts its retry budget.
 
 def test_fallback_chain_groq_succeeds_gemini_never_called():
     from app.ai.retry import stream_with_fallback
@@ -229,7 +210,7 @@ def test_fallback_chain_groq_succeeds_gemini_never_called():
 
     def gemini_should_not_be_called():
         raise AssertionError("Gemini should not have been called when Groq succeeds")
-        yield "unused"  # pragma: no cover — unreachable, keeps this a generator
+        yield "unused"  # pragma: no cover — keeps this a generator
 
     result = list(stream_with_fallback(groq_ok, gemini_should_not_be_called, "Groq", "Gemini"))
     assert result == ["Groq answer."]
@@ -250,7 +231,7 @@ def test_fallback_chain_groq_exhausts_retries_then_gemini_used():
     with patch("app.ai.retry.time.sleep"):
         result = list(stream_with_fallback(groq_always_fails, gemini_ok, "Groq", "Gemini"))
     assert result == ["Gemini fallback answer."]
-    assert groq_call_count[0] == 3  # 1 initial + 2 retries, all on Groq, before falling back
+    assert groq_call_count[0] == 3  # 1 initial + 2 retries before falling back
 
 
 def test_fallback_chain_both_providers_fail_clean_error():
@@ -265,7 +246,7 @@ def test_fallback_chain_both_providers_fail_clean_error():
     with patch("app.ai.retry.time.sleep"):
         result = list(stream_with_fallback(groq_fails, gemini_fails, "Groq", "Gemini"))
     assert len(result) == 1
-    assert "503" not in result[0]  # never leak either provider's raw error
+    assert "503" not in result[0]
     assert "couldn't reach either" in result[0]
 
 
@@ -283,21 +264,10 @@ def test_fallback_chain_nontransient_primary_error_still_falls_back():
 
     result = list(stream_with_fallback(groq_nontransient_error, gemini_ok, "Groq", "Gemini"))
     assert result == ["Gemini answered instead."]
-    assert groq_call_count[0] == 1  # non-transient — no retry wasted, straight to fallback
+    assert groq_call_count[0] == 1  # non-transient — straight to fallback
 
 
-# --- call_generation (non-streaming fallback chain) ------------------------
-# Used by app/tools/weather.py and anything else that needs a single
-# complete string rather than a stream. Built on stream_with_fallback (a
-# non-streaming call is just a one-chunk "stream"), so these mostly
-# confirm that reuse actually works end to end, not re-testing the retry
-# mechanics themselves (already covered above).
-
-# --- dataset shard-path + pyarrow-bypass fix (Priority 1 — the `datasets`
-# library crashed three ways on this dataset, fatally with
-# ArrowNotImplementedError on the nested `passages` struct; the loader now
-# downloads the target language's ONE shard file by name via huggingface_hub
-# and reads it with pyarrow, projecting only the ingest columns) ----------
+# --- dataset shard path + pyarrow ingest -----------------------------------
 
 def test_shard_path_construction_for_confirmed_splits():
     assert _shard_path("hin_Deva", "train") == "train/hintrain.parquet"
@@ -314,11 +284,8 @@ def test_shard_path_rejects_unconfirmed_split():
 
 
 def test_load_msmarco_xi_reads_only_target_language_shard_via_pyarrow():
-    """The actual Priority-1 bug fix: confirms the loader downloads the ONE
-    target-language shard by name (train/hintrain.parquet), reads it with
-    pyarrow (bypassing `datasets`, which crashed on the nested `passages`
-    struct), projects only the ingest columns, and filters to the target
-    language — never touching the `datasets` library at all."""
+    """Downloads the one target-language shard by name, reads it with pyarrow,
+    projects only the ingest columns, and filters to the target language."""
     import app.rag.dataset as ds_module
 
     captured = {}
@@ -347,7 +314,7 @@ def test_load_msmarco_xi_reads_only_target_language_shard_via_pyarrow():
                 {"target_lang": "hin_Deva", "query_id": 1},
                 {"target_lang": "hin_Deva", "query_id": 2},
             ])
-            # a non-target row mixed in, to prove per-row filtering still runs
+            # a non-target row mixed in, to check per-row filtering
             yield _FakeBatch([
                 {"target_lang": "asm_Beng", "query_id": 999},
                 {"target_lang": "hin_Deva", "query_id": 3},
@@ -364,16 +331,14 @@ def test_load_msmarco_xi_reads_only_target_language_shard_via_pyarrow():
     assert captured["filename"] == "train/hintrain.parquet"
     assert captured["repo_type"] == "dataset"
     assert captured["opened_path"] == "/fake/cache/hintrain.parquet"
-    # projected only the ingest columns, not the full ~3.72GB-wide row
     assert captured["columns"] == ds_module._INGEST_COLUMNS
-    # filtered to the target language (the asm_Beng row dropped)
+    # the asm_Beng row is dropped
     assert [r["query_id"] for r in rows] == [1, 2, 3]
     assert all(r["target_lang"] == "hin_Deva" for r in rows)
 
 
 def test_load_msmarco_xi_respects_max_rows():
-    """max_rows caps MATCHED rows and stops the scan early — the mechanism
-    that keeps ingest to a bounded, disclosed subset of the multi-GB shard."""
+    """max_rows caps matched rows and stops the scan early."""
     import app.rag.dataset as ds_module
 
     class _FakeBatch:
@@ -401,9 +366,8 @@ def test_load_msmarco_xi_respects_max_rows():
 
 
 def test_load_msmarco_xi_reraises_real_failure_never_falls_back_to_fixture():
-    """A real load that FAILS must re-raise, NOT silently yield fixture rows
-    — the exact trap that had prior benchmarks secretly running on 2 fixture
-    chunks. The fixture is only for when the parquet stack isn't installed."""
+    """A failed real load must re-raise, not silently yield fixture rows. The
+    fixture is only for when the parquet stack isn't installed."""
     import app.rag.dataset as ds_module
 
     def boom(**kw):
@@ -417,6 +381,8 @@ def test_load_msmarco_xi_reraises_real_failure_never_falls_back_to_fixture():
         except RuntimeError as e:
             assert "simulated download failure" in str(e)
 
+
+# --- call_generation (non-streaming fallback chain) ------------------------
 
 def test_call_generation_groq_succeeds_gemini_never_called():
     from app.ai.retry import call_generation
@@ -450,12 +416,8 @@ def test_call_generation_both_fail_clean_error_not_leaked():
 
 
 def test_weather_gemini_fallback_does_not_leak_raw_error():
-    """Regression test for the exact bug reported live: weather questions
-    showing raw '(Gemini error: 503 UNAVAILABLE...)' text as the answer.
-    call_gemini's return value is truthy even when it's an error string,
-    so `txt or "Sorry..."` used to let it straight through — this
-    confirms get_weather_gemini's fallback now goes through the
-    Groq/Gemini chain and never surfaces a raw provider error."""
+    """call_gemini returns a truthy string even on error, so `txt or "Sorry..."`
+    used to let raw provider errors through as the weather answer."""
     from app.tools import weather
 
     with patch("app.tools.weather.call_gemini_json", return_value=None):
@@ -468,19 +430,15 @@ def test_weather_gemini_fallback_does_not_leak_raw_error():
     assert "couldn't reach either" in result
 
 
-# --- model selector provider routing (Priority 3) -------------------------
-# The selector now tags each model with its provider and retry.py routes the
-# chosen provider to PRIMARY. Before this, Groq was always primary and a
-# Gemini pick only ever acted as the fallback — so picking Gemini did nothing
-# unless Groq happened to fail. See settings.model_provider / retry.py.
+# --- model selector provider routing ---------------------------------------
 
 def test_model_provider_routes_by_id():
     from app.config import settings
 
-    assert settings.model_provider(None) == "groq"  # no selection → default (Groq)
+    assert settings.model_provider(None) == "groq"
     assert settings.model_provider("gemini-flash-latest") == "gemini"
     assert settings.model_provider(settings.GROQ_MODEL) == "groq"
-    assert settings.model_provider("totally-unknown-id") == "groq"  # unknown → default
+    assert settings.model_provider("totally-unknown-id") == "groq"
 
 
 def test_stream_generation_default_is_groq_primary():
@@ -500,7 +458,7 @@ def test_stream_generation_default_is_groq_primary():
         with patch("app.ai.retry.stream_groq", fake_stream_groq):
             result = list(retry.stream_generation("q"))
     assert result == ["Groq answer."]
-    assert calls[0] == "groq"  # Groq tried first when nothing is selected
+    assert calls[0] == "groq"
 
 
 def test_stream_generation_gemini_selection_makes_gemini_primary():
@@ -520,9 +478,9 @@ def test_stream_generation_gemini_selection_makes_gemini_primary():
         with patch("app.ai.retry.stream_groq", fake_stream_groq):
             result = list(retry.stream_generation("q", model="gemini-flash-latest"))
     assert result == ["Gemini primary answer."]
-    assert calls[0][0] == "gemini"  # Gemini tried FIRST, not just as fallback
-    assert calls[0][1] == "gemini-flash-latest"  # and with the selected id
-    assert all(c[0] != "groq" for c in calls)  # Groq never needed (primary won)
+    assert calls[0][0] == "gemini"
+    assert calls[0][1] == "gemini-flash-latest"
+    assert all(c[0] != "groq" for c in calls)
 
 
 def test_stream_generation_gemini_selection_still_falls_back_to_groq():
@@ -543,11 +501,11 @@ def test_stream_generation_gemini_selection_still_falls_back_to_groq():
             with patch("app.ai.retry.time.sleep"):
                 result = list(retry.stream_generation("q", model="gemini-flash-latest"))
     assert result == ["Groq rescued it."]
-    assert calls[0] == "gemini"  # Gemini was primary
-    assert "groq" in calls       # Groq is still wired up as the fallback
+    assert calls[0] == "gemini"
+    assert "groq" in calls
 
 
-# --- weather: broadened city extraction + Open-Meteo (Priority 2) ---------
+# --- weather: city extraction + Open-Meteo ---------------------------------
 
 def test_extract_city_handles_varied_phrasing():
     from app.agents.router import _extract_city
@@ -555,9 +513,9 @@ def test_extract_city_handles_varied_phrasing():
     assert _extract_city("what's the weather in Delhi") == "Delhi"
     assert _extract_city("weather in New York") == "New York"
     assert _extract_city("forecast for Mumbai") == "Mumbai"
-    assert _extract_city("Hyderabad weather") == "Hyderabad"       # city-first
-    assert _extract_city("Pune forecast today") == "Pune"          # city-first + filler
-    assert _extract_city("दिल्ली का मौसम") == "दिल्ली"              # Hindi postposition
+    assert _extract_city("Hyderabad weather") == "Hyderabad"
+    assert _extract_city("Pune forecast today") == "Pune"
+    assert _extract_city("दिल्ली का मौसम") == "दिल्ली"
 
 
 def test_extract_city_defaults_when_no_city_present():
@@ -609,9 +567,7 @@ def test_get_weather_open_meteo_formats_current_conditions():
 
 
 def test_get_weather_open_meteo_returns_none_when_city_not_found():
-    """A geocoding miss returns None so get_weather() falls back to the
-    Gemini estimate — the same fallback contract as the old OpenWeatherMap
-    path."""
+    """A geocoding miss returns None so get_weather() falls back to the estimate."""
     from app.tools import weather
 
     class _Resp:

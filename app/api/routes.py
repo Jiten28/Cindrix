@@ -1,19 +1,10 @@
 """Chat + upload + conversations + analytics API.
 
-Phase 3/4: /api/chat takes a conversation_id (returned via the
-X-Conversation-Id response header, since the response body itself is a
-streaming plain-text reply and can't also carry JSON metadata inline);
-conversations, attachments, and analytics are all scoped by
-current_user_id().
-
-Post-launch fix: attachments are now scoped per-CONVERSATION, not just
-per-user — a user with two open conversations used to share one attachment
-between them (upload a file in chat A, ask about it in chat B, get
-answers about A's file). Each conversation gets its own attachment slot now.
-Uploads that happen before a conversation exists yet (the landing page, pre-
-first-message) land in a "pending" slot that gets attached to whichever
-conversation the next message actually creates.
-"""
+/api/chat returns the reply as a streaming plain-text body; the conversation id
+comes back in the X-Conversation-Id header. Conversations, attachments, and
+analytics are scoped by current_user_id(). Attachments are per-conversation; an
+upload made before a conversation exists lands in a pending slot that attaches to
+whichever conversation the next message creates."""
 
 import io
 import json
@@ -58,19 +49,15 @@ def models():
 
 @bp.route("/config", methods=["GET"])
 def config():
-    """Tells the frontend which STT provider is live, so app.js can switch
-    between the browser-native Web Speech API path (no server involvement)
-    and the record-audio-and-POST-to-/api/stt Sarvam path (see
-    docs/Architecture.md's STT Provider section). Never exposes the actual
-    API key — only the provider name."""
+    """Which STT provider is live, so app.js picks the Web Speech path or the
+    Sarvam POST path. Never exposes the API key — only the provider name."""
     return jsonify({"sttProvider": settings.STT_PROVIDER})
 
 
 @bp.route("/stt", methods=["POST"])
 def stt():
-    """Sarvam STT path only — reached when STT_PROVIDER=sarvam (see
-    /api/config above and frontend/js/app.js). The Web Speech API path
-    never hits the backend at all, same as before this priority."""
+    """Sarvam STT path — reached only when STT_PROVIDER=sarvam. The Web Speech
+    path never hits the backend."""
     if settings.STT_PROVIDER != "sarvam":
         return jsonify({"ok": False, "error": "Server-side STT is not enabled (STT_PROVIDER != sarvam)."}), 400
     if "audio" not in request.files:
@@ -101,9 +88,8 @@ def chat():
         conv = create_conversation(user_id)
         conversation_id = conv["id"]
 
-        # Carry over any attachment uploaded before this conversation
-        # existed (e.g. from the landing page) into the new conversation's
-        # own slot, then clear the pending one.
+        # Carry an attachment uploaded before this conversation existed (e.g.
+        # from the landing page) into its slot, then clear the pending one.
         pending = get_active(_attachment_key(user_id, None))
         if pending:
             set_active(_attachment_key(user_id, conversation_id), pending)

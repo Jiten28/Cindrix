@@ -1,11 +1,4 @@
-"""Tracks the 'active attachment' (uploaded document or image), keyed by an
-opaque string the caller controls. Started as one slot per user_id (Phase
-4), then became one slot per "user_id:conversation_id" (post-launch fix —
-see routes.py's _attachment_key and Memory.md) once per-user scoping turned
-out to still leak an attachment across a user's different conversations.
-This module itself doesn't know or care what the key means — routes.py
-builds it.
-"""
+"""Tracks the active attachment (document or image) per caller-supplied key."""
 
 import json
 import os
@@ -31,9 +24,7 @@ def _ensure_dirs() -> None:
 
 
 def _state_file(key: str) -> str:
-    # Composite keys look like "user_id:conversation_id" — ":" isn't a
-    # legal character in Windows filenames, so it gets swapped out here
-    # rather than baked into every caller's key-building logic.
+    # ":" isn't legal in Windows filenames, so swap it for the on-disk name.
     safe_key = key.replace(":", "__")
     return os.path.join(_BASE_DIR, f"{safe_key}.json")
 
