@@ -33,35 +33,67 @@ for the specific spots this was audited.
 
 Style direction: dark theme first, glassmorphism (translucent blurred panels),
 soft gradients, subtle shadows, rounded corners, floating particles in the
-background at low opacity.
+background at low opacity (see "Starfield" below for how this differs
+between themes).
 
 ### Light theme
 
 No light-mode values existed anywhere in this project before the
 sphere-interactivity/theme-toggle session — checked this file, `Memory.md`,
 `PRD.md`, and full git history; `PRD.md` only ever listed "Dark/light theme
-toggle" as an unspecified requirement bullet. The values below are a new
-choice made during that session, kept in the same Ember Violet family
-(same accent hue, deepened slightly for AA contrast on a light surface)
+toggle" as an unspecified requirement bullet. Named **"Lavender Dusk"**,
+picked from 4 candidates (Warm Parchment, Lavender Dusk, Champagne Violet,
+Slate Orchid) shown as a live-rendered preview against real UI chrome —
+picked specifically for reading as the same product as the dark theme
+(cool violet-gray undertone, not a warm/neutral swap to a different mood)
 rather than an unrelated palette:
 
-| Role             | Hex / value               |
-| ---------------- | -------------------------- |
-| Background       | `#FAF9FC`                  |
-| Cards            | `#FFFFFF`                  |
-| Card border      | `rgba(23,20,28,.1)`        |
-| Accent           | `#7C4DEF`                  |
+| Role             | Hex / value                |
+| ---------------- | --------------------------- |
+| Background       | `#E9E4F0`                   |
+| Cards            | `#F6F3FA`                   |
+| Card border      | `rgba(28,22,40,.14)`        |
+| Accent           | `#7440E0`                   |
 | Glow             | `#F0A34E` (amber, unchanged) |
-| Text (primary)   | `#17141C`                  |
-| Text (secondary) | `rgba(23,20,28,.6)`        |
+| Text (primary)   | `#1D1830`                   |
+| Text (secondary) | `rgba(29,24,48,.62)`        |
 
 Glow stays the same amber in both themes — it's the sphere/mic-state color,
-not a surface token, so it doesn't need to invert. Implemented via
+not a surface token, so it doesn't need to invert. Accent is deepened from
+the dark theme's `#9B6EF7` to `#7440E0` for AA contrast on a light surface
+— same violet family, not a different hue. Implemented via
 `html[data-theme="light"]` in `frontend/css/style.css`, toggled and
 persisted (`localStorage`) by `frontend/js/app.js`. Known gap: code-block
 syntax highlighting (`highlight.js`'s `atom-one-dark` CDN theme) stays dark
 in both themes — a light hljs theme swap wasn't attempted as part of this
 pass.
+
+### Starfield
+
+The full-viewport canvas background (`frontend/js/starfield.js`) is
+deliberately colorless and low-opacity in the dark theme so it never
+competes with the accent-colored particle sphere — sparse white dots,
+gentle fixed-position twinkle, unchanged since it was first built.
+
+The light theme does **not** use the same dots recolored dark — that
+literal approach was tried first and read as dust/specks on paper rather
+than a "living particle" background (user feedback). Light theme instead
+runs a distinct mode, **Soft Bokeh Motes**: fewer, larger (1.8–4.2px vs.
+0.3–1.4px), soft-edged (blurred) circles that drift slowly around an
+anchor point rather than twinkling in place, mixing the violet accent
+(~70%) and amber glow (~30%) instead of a single flat color. Reads as
+warm ambient light rather than pinpoint stars. Picked from 3 live-animated
+options (Violet Sparkle — same dots just recolored; Soft Bokeh Motes —
+chosen; Sparse Glints + Grain — a near-static paper-grain texture) shown
+side by side before deciding; see `Memory.md`'s dated "Starfield — Light
+Theme Finalized" entry for the other two and why they weren't picked.
+
+Both modes share one draw loop, generation lifecycle, and the
+`prefers-reduced-motion`/sub-480px-disable handling already documented
+above for the sphere — only per-particle shape/motion/color branches on
+the active theme, decided once per `generateStars()` call (page load,
+window resize, and on the `cindrix:themechange` event `app.js`'s theme
+toggle dispatches).
 
 ## Typography
 

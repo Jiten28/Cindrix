@@ -14,7 +14,9 @@
    hardcoded rgba(...) overlays elsewhere in this file (hover states,
    glass-panel surfaces) can read rgba(var(--card-rgb), .55) and
    automatically follow the active theme instead of staying pinned
-   to the dark hex values they were written against.
+   to the dark hex values they were written against. --accent-rgb/
+   --glow-rgb exist for the same reason but are read from JS (not CSS)
+   by frontend/js/starfield.js's light-theme "bokeh motes" background.
    ============================================================ */
 :root {
   --bg: #0A0A0C;
@@ -29,6 +31,8 @@
   --card-rgb: 26,22,32;
   --text-rgb: 245,240,250;
   --star-rgb: 255,255,255;
+  --accent-rgb: 155,110,247;
+  --glow-rgb: 240,163,78;
 
   --radius-md: 12px;
   --radius-lg: 20px;
@@ -42,21 +46,27 @@
 
 /* Light theme — toggled via [data-theme="light"] on <html>, set by
    app.js and persisted to localStorage (see initTheme() at the top of
-   app.js). Glow/accent stay in the same violet-amber family described
-   in Design.md; only surface/text tokens actually invert. */
+   app.js). Glow stays the exact same amber (identity color, not a
+   surface token) — accent is deepened from the dark theme's #9B6EF7 for
+   AA contrast on a light surface, still the same violet family.
+   "Lavender Dusk" — picked from 4 candidates shown in a live preview
+   (see Memory.md's dated entry); chosen specifically for reading as the
+   same product as the dark theme, not a different app in light mode. */
 html[data-theme="light"] {
-  --bg: #FAF9FC;
-  --card: #FFFFFF;
-  --card-border: rgba(23,20,28,.1);
-  --accent: #7C4DEF;
+  --bg: #E9E4F0;
+  --card: #F6F3FA;
+  --card-border: rgba(28,22,40,.14);
+  --accent: #7440E0;
   --glow: #F0A34E;
-  --text: #17141C;
-  --text-secondary: rgba(23,20,28,.6);
+  --text: #1D1830;
+  --text-secondary: rgba(29,24,48,.62);
 
-  --bg-rgb: 250,249,252;
-  --card-rgb: 255,255,255;
-  --text-rgb: 23,20,28;
-  --star-rgb: 23,20,28;
+  --bg-rgb: 233,228,240;
+  --card-rgb: 246,243,250;
+  --text-rgb: 29,24,48;
+  --star-rgb: 29,24,48;
+  --accent-rgb: 116,64,224;
+  --glow-rgb: 240,163,78;
 
   color-scheme: light;
 }

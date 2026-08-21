@@ -14,7 +14,99 @@
 > — fix it back to these two values rather than trusting what's already
 > written elsewhere as a source of truth.
 
-Last updated: Interface polish, core (sphere mouse-interactivity + light/dark theme toggle) — see entry immediately below. Hackathon Phase 5 (dataset/fallback fixes) still the most recent *hackathon-track* entry; this session's work was frontend-only and doesn't affect it.
+Last updated: Starfield light-theme redesign finalized (Soft Bokeh Motes) and stale "Gemini Flash" model-label report — see entries immediately below. Hackathon Phase 5 (dataset/fallback fixes) still the most recent *hackathon-track* entry; none of this frontend-only work touches it.
+
+---
+
+## Light Theme — Palette Finalized ("Lavender Dusk")
+
+New, short follow-up to the "Interface Polish, Core" entry below. The
+initial light-theme values shipped in that session (`#FAF9FC`/`#FFFFFF`,
+accent `#7C4DEF`) were a reasonable first guess but user feedback called
+them too bright / hard on the eyes for a "premium" feel. Rather than
+guessing again, built a live-rendered comparison tool (a standalone HTML
+preview, not part of the shipped app) showing 4 candidate palettes against
+the actual sidebar/topbar/chat-bubble/composer chrome, all deeper/warmer-
+or-cooler than stark white:
+
+- **Warm Parchment** — warm ivory paper, deep aubergine text.
+- **Lavender Dusk** — cool muted lavender-gray. ← **chosen**
+- **Champagne Violet** — warm gold-beige, richer than Parchment.
+- **Slate Orchid** — deepest/moodiest, soft greige with orchid undertone.
+
+User picked **Lavender Dusk** specifically because it reads as the same
+product as the dark theme (cool violet-gray undertone carried through)
+rather than a different mood in light mode. Applied to
+`frontend/css/style.css`'s `html[data-theme="light"]` block and
+`Design.md`'s Light theme table — final values: `--bg: #E9E4F0`,
+`--card: #F6F3FA`, `--card-border: rgba(28,22,40,.14)`,
+`--accent: #7440E0`, `--text: #1D1830`,
+`--text-secondary: rgba(29,24,48,.62)`. Glow (`#F0A34E`) and the accent
+being a deepened-for-contrast version of the dark theme's `#9B6EF7` are
+unchanged in spirit from the superseded first pass — only the actual hex
+values moved.
+
+At the time of this entry, the starfield background's light-theme
+treatment was still an open thread (a literal dark-dot recolor, flagged
+by the user as reading like dust on paper) — resolved in the next entry
+below with a proper "Soft Bokeh Motes" redesign.
+
+---
+
+## Starfield — Light Theme Finalized ("Soft Bokeh Motes") + Model-Label Investigation
+
+New. Frontend-only session, same scoping as the two entries below (`app/`,
+router.py, RAG/STT/Groq/Gemini untouched). Two tasks; the first closes the
+starfield open thread noted at the end of the "Light Theme — Palette
+Finalized" entry below, the second is a report-only finding, not a fix.
+
+**1. Starfield light-theme redesign — done.** A live-animated comparison
+tool (again a standalone preview, not part of the shipped app) showed 3
+options against the actual chat chrome on the Lavender Dusk background:
+
+- **Violet Sparkle** — same dots as dark theme, recolored to accent violet.
+- **Soft Bokeh Motes** — fewer, larger, blurred, drifting, violet+amber. ← **chosen**
+- **Sparse Glints + Grain** — near-static paper-grain texture + rare glints.
+
+Implemented in `frontend/js/starfield.js`: the dark-theme draw path is
+byte-for-byte the same sparse white twinkling dots as before (verified by
+diff — parameters, motion formula, and colors all unchanged). Light theme
+now branches into a distinct mode instead of just recoloring the same
+dots — fewer/bigger (1.8–4.2px vs. 0.3–1.4px) soft-edged circles
+(`ctx.shadowBlur`) that drift around an anchor point (`Math.sin`/`cos` on
+independent phase/speed per particle) rather than twinkling in place,
+mixing ~70% accent violet / ~30% amber glow per particle rather than one
+flat color. Both modes share one `generateStars()`/`draw()`/resize
+lifecycle; which branch runs is decided by reading
+`document.documentElement`'s `data-theme` attribute once per generation
+(page load, resize, and on `app.js`'s `cindrix:themechange` event) rather
+than duplicating the rAF loop.
+
+Added `--accent-rgb`/`--glow-rgb` tokens to both theme blocks in
+`style.css` (dark: `155,110,247` / `240,163,78`; light:
+`116,64,224` / `240,163,78`) so `starfield.js` can read real theme colors
+via `getComputedStyle` instead of hardcoding a second copy of the accent/
+glow hex values. `Design.md` gained a new "Starfield" subsection
+documenting both modes; this closes the open thread the prior entry left
+hanging.
+
+**2. Stale "Gemini Flash" model label — investigated, NOT fixed, flagged
+back.** User reported the topbar model badge and dropdown still show
+"Gemini Flash" as primary even though Groq is now primary with Gemini as
+fallback per `Architecture.md`. Traced it in `frontend/js/app.js`
+(`loadModels()`, ~line 1181): both `#modelName`'s text and every
+`#modelSelect` option are populated entirely from whatever
+`GET /api/models` returns (`m.label` per option, `models[0].label` for the
+badge) — there is no hardcoded "Gemini Flash" string anywhere in
+`frontend/` (confirmed by grep across `frontend/`; the only hardcoded
+placeholder is `index.html`'s static `Gemini` text, which `loadModels()`
+overwrites immediately on page load and which doesn't match the reported
+"Gemini Flash" wording anyway — a further sign it's live backend data, not
+a frontend fallback). `Testing.md` §17 line ~197 independently lists this
+exact dropdown/label as an unverified checklist item. Per this session's
+explicit instructions, stopped here rather than guessing at a fix — this
+needs `/api/models`' backend-side model config/ordering updated, which is
+`app/` work outside this session's frontend-only scope.
 
 ---
 
