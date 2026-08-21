@@ -7,9 +7,12 @@ Function names and behavior are unchanged so nothing calling this module
 needs to change.
 
 Phase 4: call_gemini/stream_gemini accept an optional model override (for
-the model selector UI) — validated against settings.AVAILABLE_MODELS rather
-than passed straight through, so an unexpected string from the client can't
-reach the API as a model name.
+the model selector UI) — validated against settings.GEMINI_MODEL_IDS (the
+Gemini-provider ids only, NOT the full AVAILABLE_MODELS list) rather than
+passed straight through. So an unexpected string from the client can't reach
+the API as a model name, AND a Groq id selected in the UI (which reaches this
+module only as the Gemini *fallback* leg of app/ai/retry.py) resolves to
+GEMINI_MODEL here instead of being sent to Gemini verbatim.
 """
 
 import json
@@ -22,7 +25,10 @@ from google.genai import types
 from app.config import settings
 
 _client: Optional[genai.Client] = None
-_VALID_MODEL_IDS = {m["id"] for m in settings.AVAILABLE_MODELS}
+# Only the Gemini-provider ids are valid model overrides here — a Groq id
+# from the selector reaches this module only as retry.py's Gemini fallback,
+# and must resolve to GEMINI_MODEL, not be forwarded to the Gemini API.
+_VALID_MODEL_IDS = settings.GEMINI_MODEL_IDS
 
 
 def _resolve_model(model: Optional[str]) -> str:

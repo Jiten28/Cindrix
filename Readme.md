@@ -30,15 +30,21 @@ Web Speech API.
   grounding threshold — the system declines to answer rather than
   guess when retrieved context doesn't support a claim
 - **Latency:** `python -m app.rag.benchmark` reports real P50/P70/P100
-  timing per pipeline stage (embed → retrieve → generate); see
-  `docs/Testing.md` for the current numbers and target status
+  timing per pipeline stage (embed → retrieve → generate). Measured
+  against the real index (2026-08-21): FAISS retrieval ~1 ms (P70
+  1.16 ms), Groq generation ~1 s (P70 1.08 s) — so end-to-end is
+  generation-bound. Retrieval sits three orders of magnitude under the
+  200 ms target; a full generated answer costs ~1 s of model time that no
+  index choice can shrink. Full table and caveats in `docs/Testing.md`
+  §17b
 - **Harness:** retries with transient-failure recovery, exhaustion
   handling, and graceful mid-stream close around the generation path
 
 ## What's already working
 
 - Conversational memory across a session
-- Live weather lookup (OpenWeather, Gemini fallback when unset)
+- Live weather lookup (Open-Meteo — keyless, no signup; Gemini estimate
+  fallback for places it can't geocode)
 - Live crypto price lookup (CoinGecko)
 - Web and image search
 - Voice input/output (Sarvam for hackathon compliance, browser Web
@@ -97,6 +103,13 @@ Ingest the knowledge base once before running the RAG path:
 ```bash
 python -m app.rag.ingest
 ```
+
+> **Free-tier note:** Gemini's free embedding tier has a hard cap of
+> **1000 requests/day** (plus a ~100/min limit), each text in a batch
+> counting individually. The default ingest (`RAG_INGEST_MAX_ROWS=100` →
+> ~1000 passage chunks) sits right at that daily ceiling — effectively one
+> full ingest per day per key. The run logs any chunks it couldn't embed
+> and saves an honest partial index rather than silently dropping them.
 
 Run:
 

@@ -18,12 +18,15 @@ Two layers:
    this transient" is detected by pattern-matching the first yielded
    chunk, not by catching an exception here — same shape for both
    providers on purpose (see groq_client.py's docstring).
-2. Provider fallback (`stream_with_fallback`, `stream_generation`) — Groq
-   is the primary generation provider; if it exhausts its own retry
-   budget, Gemini is tried next (also with its own retry budget); if that
-   also fails, a clean user-facing message is returned. Logs which
-   provider actually served the response, for demo narration and the
-   latency benchmark's per-provider breakdown.
+2. Provider fallback (`stream_with_fallback`, `stream_generation`) — the
+   two providers (Groq, Gemini) are tried in an order set by the selected
+   model's provider (settings.model_provider): Groq is primary by default
+   (and whenever a Groq model is selected), Gemini is primary when a Gemini
+   model is selected in the UI. Whichever is primary is retried on its own
+   budget first; if it's exhausted the other is tried next (also with its
+   own retry budget); if that also fails, a clean user-facing message is
+   returned. Logs which provider actually served the response, for demo
+   narration and the latency benchmark's per-provider breakdown.
 
 In both layers: retries/fallback only happen before any real content has
 reached the caller — once a chunk of the actual answer is out, retrying or
@@ -173,43 +176,64 @@ def stream_with_fallback(
     yield _BOTH_PROVIDERS_FAILED_MESSAGE
 
 
-def stream_generation(prompt: str, gemini_model: Optional[str] = None) -> Generator[str, None, None]:
+def stream_generation(prompt: str, model: Optional[str] = None) -> Generator[str, None, None]:
     """Public entry point for streaming generation calls — used by
     app/agents/router.py for every text-generation response the app
     produces (tool-synthesis, RAG-serving, and plain conversational
     chat alike — see that module for the specific call sites).
 
-    Groq (settings.GROQ_MODEL, fixed) is primary; Gemini (gemini_model —
-    e.g. from the model-selector UI, or settings.GEMINI_MODEL if not
-    given) is the fallback. See docs/Architecture.md's "Generation
-    Provider Chain" section for why this order, and the honest caveat
-    that the <200ms rationale is based on Groq's generally-published
-    hardware speed, not yet this project's own benchmark.py numbers —
-    that's Task 4, still pending as of the change that added this.
+    `model` is the id the model-selector UI sent (or None). Its PROVIDER —
+    resolved via settings.model_provider() — decides which provider is tried
+    first: a Gemini selection runs Gemini-primary/Groq-fallback; anything
+    else (a Groq selection, or no selection at all) runs
+    Groq-primary/Gemini-fallback, the app's default chain. This replaces the
+    old behavior where Groq was ALWAYS primary and the dropdown value was
+    only ever used as the Gemini fallback leg — so picking a Gemini model in
+    the UI did nothing unless Groq happened to fail. See
+    docs/Architecture.md's "Generation Provider Chain" section.
+
+    The non-chosen provider is still wired up as the fallback either way, so
+    a selection changes the order, never the resilience. A Groq id handed to
+    the Gemini leg resolves to GEMINI_MODEL (gemini_client validates against
+    settings.GEMINI_MODEL_IDS); a Gemini id handed to the Groq leg is ignored
+    in favor of GROQ_MODEL.
     """
+    provider = settings.model_provider(model)
+    groq_model = model if provider == "groq" and model else settings.GROQ_MODEL
+
     def make_groq_stream():
-        return stream_groq(prompt, model=settings.GROQ_MODEL)
+        return stream_groq(prompt, model=groq_model)
 
     def make_gemini_stream():
-        return stream_gemini(prompt, model=gemini_model)
+        return stream_gemini(prompt, model=model)
 
-    yield from stream_with_fallback(make_groq_stream, make_gemini_stream, "Groq", "Gemini")
+    if provider == "gemini":
+        yield from stream_with_fallback(make_gemini_stream, make_groq_stream, "Gemini", "Groq")
+    else:
+        yield from stream_with_fallback(make_groq_stream, make_gemini_stream, "Groq", "Gemini")
 
 
-def call_generation(prompt: str, gemini_model: Optional[str] = None) -> str:
+def call_generation(prompt: str, model: Optional[str] = None) -> str:
     """Non-streaming equivalent of stream_generation(), for callers that
     need a single complete string rather than a stream (e.g.
     app/tools/weather.py's Gemini-fallback weather description, which
     used to call call_gemini() directly and leak raw errors the same way
     the streaming paths did before this fix).
 
+    Same provider routing as stream_generation() (see its docstring): the
+    selected model's provider is tried first, the other is the fallback.
     Implemented by reusing stream_with_fallback rather than a second
     parallel retry/fallback implementation — a non-streaming call is just
     a one-chunk "stream" from this machinery's point of view."""
+    provider = settings.model_provider(model)
+    groq_model = model if provider == "groq" and model else settings.GROQ_MODEL
+
     def make_groq_call():
-        yield call_groq(prompt, model=settings.GROQ_MODEL)
+        yield call_groq(prompt, model=groq_model)
 
     def make_gemini_call():
-        yield call_gemini(prompt, model=gemini_model)
+        yield call_gemini(prompt, model=model)
 
+    if provider == "gemini":
+        return "".join(stream_with_fallback(make_gemini_call, make_groq_call, "Gemini", "Groq"))
     return "".join(stream_with_fallback(make_groq_call, make_gemini_call, "Groq", "Gemini"))

@@ -1,9 +1,11 @@
 """Automated tests for the hackathon-track RAG additions (Priorities 2/4/5
-— chunking, vector store, guardrails, retry). Runs for real in CI (see
-.github/workflows/ci.yml — installs from requirements.txt, so faiss-cpu/
-datasets/numpy are genuinely present there, unlike the sandboxed session
-this was originally built and manually verified in — see docs/Memory.md
-and docs/Testing.md section 17 for that distinction).
+— chunking, vector store, guardrails, retry) plus the Aug-2026 hackathon
+push (parquet ingest bypass, provider-routing model selector, broadened
+weather/city extraction). Runs for real in CI (see .github/workflows/ci.yml
+— installs from requirements.txt, so faiss-cpu/huggingface_hub/pyarrow/numpy
+are genuinely present there, unlike the sandboxed session this was
+originally built and manually verified in — see docs/Memory.md and
+docs/Testing.md section 17 for that distinction).
 
 Doesn't require GOOGLE_API_KEY for anything except the embeddings-backed
 top_k_chunks test, which mocks embed_query rather than calling the real
@@ -13,6 +15,7 @@ needing a real key (see test_health.py).
 
 import os
 import sys
+import types
 from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -290,10 +293,11 @@ def test_fallback_chain_nontransient_primary_error_still_falls_back():
 # confirm that reuse actually works end to end, not re-testing the retry
 # mechanics themselves (already covered above).
 
-# --- dataset shard-path fix (Task 1 — was streaming+filtering the whole
-# combined 10.1M-row "default" config, crashing on other languages' shards
-# before ever reaching a match; now loads the target language's shard file
-# directly) ------------------------------------------------------------
+# --- dataset shard-path + pyarrow-bypass fix (Priority 1 — the `datasets`
+# library crashed three ways on this dataset, fatally with
+# ArrowNotImplementedError on the nested `passages` struct; the loader now
+# downloads the target language's ONE shard file by name via huggingface_hub
+# and reads it with pyarrow, projecting only the ingest columns) ----------
 
 def test_shard_path_construction_for_confirmed_splits():
     assert _shard_path("hin_Deva", "train") == "train/hintrain.parquet"
@@ -309,37 +313,109 @@ def test_shard_path_rejects_unconfirmed_split():
         pass
 
 
-def test_load_msmarco_xi_loads_only_target_language_shard():
-    """The actual bug fix: confirms load_dataset is called with
-    data_files pointing at ONE shard (not the combined "default" config),
-    so it never has to stream through other languages' shards first."""
-    import importlib
-    import sys
-    import types
-
-    if "datasets" not in sys.modules:
-        sys.modules["datasets"] = types.ModuleType("datasets")
-
+def test_load_msmarco_xi_reads_only_target_language_shard_via_pyarrow():
+    """The actual Priority-1 bug fix: confirms the loader downloads the ONE
+    target-language shard by name (train/hintrain.parquet), reads it with
+    pyarrow (bypassing `datasets`, which crashed on the nested `passages`
+    struct), projects only the ingest columns, and filters to the target
+    language — never touching the `datasets` library at all."""
     import app.rag.dataset as ds_module
-    importlib.reload(ds_module)
 
-    fake_rows = [{"target_lang": "hin_Deva", "query_id": i} for i in range(3)]
-    call_kwargs = {}
+    captured = {}
 
-    def fake_load_dataset(name, data_files=None, split=None, streaming=None):
-        call_kwargs["name"] = name
-        call_kwargs["data_files"] = data_files
-        call_kwargs["split"] = split
-        call_kwargs["streaming"] = streaming
-        return iter(fake_rows)
+    def fake_hf_hub_download(repo_id, filename, repo_type):
+        captured["repo_id"] = repo_id
+        captured["filename"] = filename
+        captured["repo_type"] = repo_type
+        return "/fake/cache/hintrain.parquet"
 
-    ds_module._hf_datasets = types.SimpleNamespace(load_dataset=fake_load_dataset)
-    ds_module._HF_DATASETS_AVAILABLE = True
+    class _FakeBatch:
+        def __init__(self, rows):
+            self._rows = rows
 
-    rows = list(ds_module.load_msmarco_xi(language="hi", split="train", max_rows=10))
-    assert len(rows) == 3
-    assert call_kwargs["data_files"] == {"train": "train/hintrain.parquet"}
-    assert call_kwargs["streaming"] is True
+        def to_pylist(self):
+            return self._rows
+
+    class _FakeParquetFile:
+        def __init__(self, path):
+            captured["opened_path"] = path
+
+        def iter_batches(self, batch_size, columns):
+            captured["batch_size"] = batch_size
+            captured["columns"] = columns
+            yield _FakeBatch([
+                {"target_lang": "hin_Deva", "query_id": 1},
+                {"target_lang": "hin_Deva", "query_id": 2},
+            ])
+            # a non-target row mixed in, to prove per-row filtering still runs
+            yield _FakeBatch([
+                {"target_lang": "asm_Beng", "query_id": 999},
+                {"target_lang": "hin_Deva", "query_id": 3},
+            ])
+
+    fake_pq = types.SimpleNamespace(ParquetFile=_FakeParquetFile)
+
+    with patch.object(ds_module, "_PARQUET_STACK_AVAILABLE", True), \
+            patch.object(ds_module, "_hf_hub_download", fake_hf_hub_download), \
+            patch.object(ds_module, "_pq", fake_pq):
+        rows = list(ds_module.load_msmarco_xi(language="hi", split="train", max_rows=10))
+
+    # downloaded exactly the Hindi train shard, from the dataset repo
+    assert captured["filename"] == "train/hintrain.parquet"
+    assert captured["repo_type"] == "dataset"
+    assert captured["opened_path"] == "/fake/cache/hintrain.parquet"
+    # projected only the ingest columns, not the full ~3.72GB-wide row
+    assert captured["columns"] == ds_module._INGEST_COLUMNS
+    # filtered to the target language (the asm_Beng row dropped)
+    assert [r["query_id"] for r in rows] == [1, 2, 3]
+    assert all(r["target_lang"] == "hin_Deva" for r in rows)
+
+
+def test_load_msmarco_xi_respects_max_rows():
+    """max_rows caps MATCHED rows and stops the scan early — the mechanism
+    that keeps ingest to a bounded, disclosed subset of the multi-GB shard."""
+    import app.rag.dataset as ds_module
+
+    class _FakeBatch:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def to_pylist(self):
+            return self._rows
+
+    class _FakeParquetFile:
+        def __init__(self, path):
+            pass
+
+        def iter_batches(self, batch_size, columns):
+            yield _FakeBatch([{"target_lang": "hin_Deva", "query_id": i} for i in range(100)])
+
+    fake_pq = types.SimpleNamespace(ParquetFile=_FakeParquetFile)
+
+    with patch.object(ds_module, "_PARQUET_STACK_AVAILABLE", True), \
+            patch.object(ds_module, "_hf_hub_download", lambda **kw: "/fake.parquet"), \
+            patch.object(ds_module, "_pq", fake_pq):
+        rows = list(ds_module.load_msmarco_xi(language="hi", split="train", max_rows=5))
+
+    assert len(rows) == 5
+
+
+def test_load_msmarco_xi_reraises_real_failure_never_falls_back_to_fixture():
+    """A real load that FAILS must re-raise, NOT silently yield fixture rows
+    — the exact trap that had prior benchmarks secretly running on 2 fixture
+    chunks. The fixture is only for when the parquet stack isn't installed."""
+    import app.rag.dataset as ds_module
+
+    def boom(**kw):
+        raise RuntimeError("simulated download failure")
+
+    with patch.object(ds_module, "_PARQUET_STACK_AVAILABLE", True), \
+            patch.object(ds_module, "_hf_hub_download", boom):
+        try:
+            list(ds_module.load_msmarco_xi(language="hi", split="train", max_rows=5))
+            assert False, "expected the real-load failure to propagate, not fall back to fixture"
+        except RuntimeError as e:
+            assert "simulated download failure" in str(e)
 
 
 def test_call_generation_groq_succeeds_gemini_never_called():
@@ -390,4 +466,161 @@ def test_weather_gemini_fallback_does_not_leak_raw_error():
     assert "503" not in result
     assert "UNAVAILABLE" not in result
     assert "couldn't reach either" in result
+
+
+# --- model selector provider routing (Priority 3) -------------------------
+# The selector now tags each model with its provider and retry.py routes the
+# chosen provider to PRIMARY. Before this, Groq was always primary and a
+# Gemini pick only ever acted as the fallback — so picking Gemini did nothing
+# unless Groq happened to fail. See settings.model_provider / retry.py.
+
+def test_model_provider_routes_by_id():
+    from app.config import settings
+
+    assert settings.model_provider(None) == "groq"  # no selection → default (Groq)
+    assert settings.model_provider("gemini-flash-latest") == "gemini"
+    assert settings.model_provider(settings.GROQ_MODEL) == "groq"
+    assert settings.model_provider("totally-unknown-id") == "groq"  # unknown → default
+
+
+def test_stream_generation_default_is_groq_primary():
+    from app.ai import retry
+
+    calls = []
+
+    def fake_stream_gemini(prompt, model=None):
+        calls.append("gemini")
+        yield "Gemini answer."
+
+    def fake_stream_groq(prompt, model=None):
+        calls.append("groq")
+        yield "Groq answer."
+
+    with patch("app.ai.retry.stream_gemini", fake_stream_gemini):
+        with patch("app.ai.retry.stream_groq", fake_stream_groq):
+            result = list(retry.stream_generation("q"))
+    assert result == ["Groq answer."]
+    assert calls[0] == "groq"  # Groq tried first when nothing is selected
+
+
+def test_stream_generation_gemini_selection_makes_gemini_primary():
+    from app.ai import retry
+
+    calls = []
+
+    def fake_stream_gemini(prompt, model=None):
+        calls.append(("gemini", model))
+        yield "Gemini primary answer."
+
+    def fake_stream_groq(prompt, model=None):
+        calls.append(("groq", model))
+        yield "Groq answer."
+
+    with patch("app.ai.retry.stream_gemini", fake_stream_gemini):
+        with patch("app.ai.retry.stream_groq", fake_stream_groq):
+            result = list(retry.stream_generation("q", model="gemini-flash-latest"))
+    assert result == ["Gemini primary answer."]
+    assert calls[0][0] == "gemini"  # Gemini tried FIRST, not just as fallback
+    assert calls[0][1] == "gemini-flash-latest"  # and with the selected id
+    assert all(c[0] != "groq" for c in calls)  # Groq never needed (primary won)
+
+
+def test_stream_generation_gemini_selection_still_falls_back_to_groq():
+    from app.ai import retry
+
+    calls = []
+
+    def fake_stream_gemini(prompt, model=None):
+        calls.append("gemini")
+        yield "(Gemini error: 503 UNAVAILABLE. down)"
+
+    def fake_stream_groq(prompt, model=None):
+        calls.append("groq")
+        yield "Groq rescued it."
+
+    with patch("app.ai.retry.stream_gemini", fake_stream_gemini):
+        with patch("app.ai.retry.stream_groq", fake_stream_groq):
+            with patch("app.ai.retry.time.sleep"):
+                result = list(retry.stream_generation("q", model="gemini-flash-latest"))
+    assert result == ["Groq rescued it."]
+    assert calls[0] == "gemini"  # Gemini was primary
+    assert "groq" in calls       # Groq is still wired up as the fallback
+
+
+# --- weather: broadened city extraction + Open-Meteo (Priority 2) ---------
+
+def test_extract_city_handles_varied_phrasing():
+    from app.agents.router import _extract_city
+
+    assert _extract_city("what's the weather in Delhi") == "Delhi"
+    assert _extract_city("weather in New York") == "New York"
+    assert _extract_city("forecast for Mumbai") == "Mumbai"
+    assert _extract_city("Hyderabad weather") == "Hyderabad"       # city-first
+    assert _extract_city("Pune forecast today") == "Pune"          # city-first + filler
+    assert _extract_city("दिल्ली का मौसम") == "दिल्ली"              # Hindi postposition
+
+
+def test_extract_city_defaults_when_no_city_present():
+    from app.agents.router import _extract_city
+
+    assert _extract_city("what's the weather") == "your area"
+    assert _extract_city("मौसम कैसा है") == "your area"
+
+
+def test_weather_detection_matches_city_first_and_hindi():
+    from app.agents.router import _WEATHER_RE
+
+    assert _WEATHER_RE.search("Hyderabad weather") is not None
+    assert _WEATHER_RE.search("दिल्ली का मौसम") is not None
+    assert _WEATHER_RE.search("give me the forecast") is not None
+    assert _WEATHER_RE.search("what is the capital of France") is None
+
+
+def test_get_weather_open_meteo_formats_current_conditions():
+    from app.tools import weather
+
+    class _Resp:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return self._payload
+
+    geocode_payload = {"results": [{"latitude": 28.6, "longitude": 77.2, "name": "Delhi", "country": "India"}]}
+    forecast_payload = {"current": {
+        "temperature_2m": 31.4, "relative_humidity_2m": 55,
+        "wind_speed_10m": 12, "weather_code": 1,
+    }}
+    responses = [_Resp(geocode_payload), _Resp(forecast_payload)]
+
+    def fake_get(url, params=None, timeout=None):
+        return responses.pop(0)
+
+    with patch("app.tools.weather.requests.get", side_effect=fake_get):
+        result = weather.get_weather_open_meteo("Delhi")
+
+    assert result is not None
+    assert "Delhi, India" in result
+    assert "31.4" in result
+    assert "mainly clear" in result  # WMO code 1
+
+
+def test_get_weather_open_meteo_returns_none_when_city_not_found():
+    """A geocoding miss returns None so get_weather() falls back to the
+    Gemini estimate — the same fallback contract as the old OpenWeatherMap
+    path."""
+    from app.tools import weather
+
+    class _Resp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"results": []}
+
+    with patch("app.tools.weather.requests.get", return_value=_Resp()):
+        assert weather.get_weather_open_meteo("Nowhereville") is None
 

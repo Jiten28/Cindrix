@@ -15,6 +15,8 @@ supports the much larger MSMARCO-XI-backed knowledge base
 """
 
 import math
+import re
+import time
 from typing import List
 
 from google import genai
@@ -25,6 +27,15 @@ from app.rag.vector_store import VectorStore
 
 _client = None
 
+# Free-tier embedding quota is ~100 contents/minute (see docs/Memory.md's
+# dated entry). A batch ingest that hit that limit used to SILENTLY drop the
+# rate-limited chunks — embed_texts caught the 429, returned empty vectors,
+# and ingest skipped them — saving a PARTIAL index as if it were complete
+# (the exact "secretly degraded" trap app/rag/dataset.py's docstring rails
+# against). embed_texts now retries on 429, honoring the server's advised
+# delay, but ONLY when the caller opts in via max_retries.
+_EMBED_RETRY_DEFAULT_DELAY = 20.0
+
 
 def _get_client() -> genai.Client:
     global _client
@@ -33,19 +44,53 @@ def _get_client() -> genai.Client:
     return _client
 
 
-def embed_texts(texts: List[str]) -> List[List[float]]:
-    """Returns one embedding vector per input string, same order."""
+def _retry_delay_seconds(error_text: str, default: float) -> float:
+    """Pulls the server-advised retry delay out of a 429 error string
+    ("Please retry in 47.0s" or "'retryDelay': '47s'"); falls back to
+    `default` if neither form is present. Adds a 1s cushion so we resume
+    just past the rate window rather than exactly on its edge."""
+    for pattern in (r"retry in ([0-9.]+)s", r"retryDelay['\"]?:\s*['\"]?([0-9.]+)s"):
+        match = re.search(pattern, error_text)
+        if match:
+            try:
+                return float(match.group(1)) + 1.0
+            except ValueError:
+                pass
+    return default
+
+
+def embed_texts(texts: List[str], max_retries: int = 0) -> List[List[float]]:
+    """Returns one embedding vector per input string, same order.
+
+    On HTTP 429 (free-tier rate limit) retries up to `max_retries` times,
+    sleeping the server-advised delay between attempts — so a batch ingest
+    (which passes a non-zero max_retries) builds a COMPLETE index instead of
+    silently dropping rate-limited chunks. The default max_retries=0
+    preserves fail-fast behavior for live query embedding (embed_query),
+    which must NOT block ~45s waiting out a rate window mid-request. A chunk
+    that still can't be embedded after the retry budget comes back as an
+    empty list, which callers skip."""
     if not settings.GOOGLE_API_KEY or not texts:
         return [[] for _ in texts]
-    try:
-        result = _get_client().models.embed_content(
-            model=settings.GEMINI_EMBEDDING_MODEL,
-            contents=texts,
-        )
-        return [e.values for e in result.embeddings]
-    except Exception as e:
-        print(f"[embeddings] error: {e}")
-        return [[] for _ in texts]
+    attempt = 0
+    while True:
+        try:
+            result = _get_client().models.embed_content(
+                model=settings.GEMINI_EMBEDDING_MODEL,
+                contents=texts,
+            )
+            return [e.values for e in result.embeddings]
+        except Exception as e:
+            msg = str(e)
+            rate_limited = "429" in msg or "RESOURCE_EXHAUSTED" in msg
+            if rate_limited and attempt < max_retries:
+                attempt += 1
+                delay = _retry_delay_seconds(msg, _EMBED_RETRY_DEFAULT_DELAY)
+                print(f"[embeddings] rate-limited (429); retry {attempt}/{max_retries} in {delay:.0f}s")
+                time.sleep(delay)
+                continue
+            print(f"[embeddings] error: {e}")
+            return [[] for _ in texts]
 
 
 def embed_query(text: str) -> List[float]:

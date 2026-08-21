@@ -114,13 +114,18 @@ Tasks:
 - [x] Admin panel (basic) — user list with per-user conversation/message
       counts, gated by an `is_admin` flag (first account ever created is
       auto-flagged admin — simplest possible bootstrap, no separate setup step)
-- [x] Model selector UI wired to a real provider abstraction — three actual,
-      verified-current Gemini model IDs (`gemini-flash-latest`,
-      `gemini-3.6-flash`, `gemini-3.5-flash-lite`), not fabricated
-      multi-provider options. Switching it changes which model answers,
-      end-to-end. Server-side validates the model id against the allowed
-      list before it ever reaches the Gemini API call — an unexpected string
-      from the client can't reach the API as a model name.
+- [x] Model selector UI wired to a real provider abstraction — real,
+      verified-current model IDs across the two providers actually used,
+      each tagged with a `provider`: Groq (`openai/gpt-oss-120b`, listed
+      first and default) plus three Gemini variants (`gemini-flash-latest`,
+      `gemini-3.6-flash`, `gemini-3.5-flash-lite`), not fabricated options.
+      Switching it changes which provider is **primary** for that turn (the
+      other becomes the fallback), end-to-end via `app/ai/retry.py`'s
+      provider routing. Server-side validates a Gemini override against the
+      Gemini-only allow-list before it ever reaches the Gemini API call — an
+      unexpected string (or a Groq id) can't reach the API as a Gemini model
+      name. (Originally 3 Gemini-only ids; broadened to provider routing in
+      Hackathon Phase 6 — see `Memory.md`.)
 - [x] Personal long-term memory — satisfied by the per-user conversation
       history itself; no separate memory system was needed
 
@@ -194,13 +199,24 @@ voice pipeline, and updated docs. See `Memory.md` for the dated log entry.
 **Status:**
 - Hackathon Phase 1 (rename, palette, voice pipeline verification) — done.
 - Hackathon Phase 2 (STT provider compliance, chunking + vector DB,
-  latency harness, guardrails, retry/hardening) — built and unit-tested
-  this session; **not yet verified against a real environment** (real
-  Sarvam call, real MSMARCO-XI ingest, real Gemini-backed latency
-  numbers) — see `Testing.md` section 17b for the exact remaining list.
-  Still unverified as of the interface-polish work below — nothing in
-  §17b has been checked off, and that work was frontend-only and never
-  touched the RAG/STT/Groq backend, so this status is unchanged by it.
+  latency harness, guardrails, retry/hardening) — built and unit-tested;
+  its real-environment verification (real MSMARCO-XI ingest, real
+  Gemini/Groq latency numbers) was **substantially completed in Hackathon
+  Phase 6** — see below and `Testing.md` §17b for the remaining items (a
+  real Sarvam STT call and a few live Q&A checks are still open).
+- Hackathon Phase 6 (first real-environment verification run, 2026-08-21)
+  — done. The HuggingFace ingest bypass (`huggingface_hub` + `pyarrow`,
+  `datasets` dropped) is verified against real data; a real ingest built a
+  904-vector Hindi FAISS index (904/1000 chunks embedded, dim 3072 — the
+  96 skips were the Gemini free-tier **daily** embedding cap, 1000/day,
+  logged explicitly not silently); the latency benchmark produced real
+  numbers (retrieval ~1 ms, Groq generation P70 ~1.08 s, end-to-end
+  generation-bound so `meets_target` is honestly `false`); Groq-primary
+  provider routing confirmed live (5/5 served by Groq, zero fallbacks);
+  and weather moved to keyless Open-Meteo. Several `Testing.md` §17b items
+  are now checked off. Still open in §17b: live grounded/decline Q&A, a
+  real Sarvam STT recording, the weather Gemini-fallback path, and the one
+  benchmark stage (query embedding) that awaits the daily quota reset.
 - Interface polish, core (sphere mouse-interactivity, light/dark toggle)
   — **built**, on explicit instruction, ahead of Hackathon Phase 2's
   real-environment verification rather than after it as originally

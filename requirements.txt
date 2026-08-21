@@ -17,6 +17,11 @@ faiss-cpu>=1.8          # real ANN vector store, replaces the old brute-force
                         # warning if this isn't installed, so the app still
                         # runs (degraded) in an environment where it can't
                         # be installed — see app/rag/vector_store.py
-datasets>=2.19          # HuggingFace `datasets` — streams ai4bharat/MSMARCO-XI
-                        # without downloading the full multi-GB file up front;
-                        # also soft-imported, see app/rag/dataset.py
+huggingface_hub>=0.23   # downloads the target language's MSMARCO-XI parquet
+                        # shard by name (hf_hub_download) — replaces the
+                        # HuggingFace `datasets` library, which crashed with
+                        # ArrowNotImplementedError on the dataset's nested
+                        # `passages` struct. Soft-imported, see app/rag/dataset.py
+pyarrow>=15             # reads that parquet shard into plain Python dicts
+                        # (.to_pylist()) — handles the nested struct `datasets`
+                        # couldn't. Also soft-imported, see app/rag/dataset.py

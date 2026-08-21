@@ -46,7 +46,13 @@ from app.rag.vector_store import VectorStore
 
 logger = logging.getLogger(__name__)
 
-_WEATHER_RE = re.compile(r"\bweather\b.*\bin\s+([a-zA-Z\s]+)", re.IGNORECASE)
+# Weather DETECTION — does this message ask about the weather at all? Broad
+# on purpose: the old pattern (`weather ... in <city>`) missed city-first
+# phrasing ("Hyderabad weather") and Hindi ("दिल्ली का मौसम"). City
+# extraction is a separate step (_extract_city) so detection doesn't have to
+# also parse out the location. Anything this catches but can't geocode falls
+# through to the Gemini estimate, so over-matching degrades gracefully.
+_WEATHER_RE = re.compile(r"\bweather\b|\bforecast\b|मौसम", re.IGNORECASE)
 _CRYPTO_RE = re.compile(r"\b(price of|cost of)\s+([a-zA-Z]+)", re.IGNORECASE)
 _SEARCH_RE = re.compile(r"\bsearch(?: for)?\s+(.+)", re.IGNORECASE)
 _IMAGE_RE = re.compile(r"\bimage(?:s)? of\s+(.+)", re.IGNORECASE)
@@ -78,9 +84,44 @@ def get_kb_store() -> Optional[VectorStore]:
     return _kb_store
 
 
+# City EXTRACTION patterns, tried in order. City names can be non-ASCII
+# (Devanagari etc.), so none of these restrict the captured text to [a-zA-Z]
+# the way the old single pattern did.
+#   1. Hindi postposition:  "दिल्ली का मौसम" / "मुंबई में मौसम" — city precedes का/में/की/के
+#   2. English preposition: "weather in Delhi" / "forecast for New York" / "weather at Pune"
+#   3. City-first:          "Hyderabad weather" / "Delhi forecast"
+_CITY_HINDI_RE = re.compile(r"(.+?)\s*(?:का|के|की|में)\s*(?:मौसम|तापमान)")
+_CITY_PREP_RE = re.compile(r"\b(?:in|for|at|of)\s+(.+)", re.IGNORECASE)
+_CITY_FIRST_RE = re.compile(r"(.+?)\s+(?:weather|forecast|temperature)\b", re.IGNORECASE)
+
+# Words that are never part of a city name but can survive into a capture —
+# stripped out before the candidate is handed to geocoding.
+_CITY_NOISE_RE = re.compile(
+    r"\b(weather|forecast|temperature|today|tonight|tomorrow|right now|now|"
+    r"currently|like|what'?s|whats|what|is|the|please|tell me|it|there|"
+    r"going to be|gonna be|will|be)\b|मौसम|तापमान|क्या|है|बताओ|बताइए",
+    re.IGNORECASE,
+)
+
+
+def _clean_city(raw: str) -> str:
+    """Strips filler/weather words and stray punctuation from a candidate
+    city string. Returns '' if nothing meaningful is left (caller then uses
+    the default)."""
+    city = _CITY_NOISE_RE.sub("", raw)
+    city = re.sub(r"\s+", " ", city).strip(" ?.!,-'\"")
+    return city
+
+
 def _extract_city(text: str, default: str = "your area") -> str:
-    match = _WEATHER_RE.search(text)
-    return match.group(1).strip() if match else default
+    t = text.strip()
+    for pattern in (_CITY_HINDI_RE, _CITY_PREP_RE, _CITY_FIRST_RE):
+        match = pattern.search(t)
+        if match:
+            city = _clean_city(match.group(1))
+            if city:
+                return city
+    return default
 
 
 def detect_tool(user_input: str, attachment: Optional[Dict] = None) -> str:
@@ -199,7 +240,7 @@ def stream_route_query(
         # used to call stream_gemini directly, which is exactly the raw-
         # error-leak bug Priority 5 was meant to fix, just on a path that
         # wasn't wired up yet. See app/ai/retry.py's stream_generation.
-        yield from stream_generation(prompt, gemini_model=model)
+        yield from stream_generation(prompt, model=model)
         return
 
     attachment = get_active(f"{user_id}:{conversation_id}")
@@ -226,7 +267,7 @@ def stream_route_query(
             )
             # Priority 5 (retry) + Groq/Gemini fallback chain: this is
             # graded RAG output — see app/ai/retry.py's stream_generation.
-            yield from stream_generation(prompt, gemini_model=model)
+            yield from stream_generation(prompt, model=model)
             return
 
     # ---- knowledge-base RAG (MSMARCO-XI, hackathon track) --------------
@@ -254,7 +295,7 @@ def stream_route_query(
                 )
                 # Priority 5 (retry) + Groq/Gemini fallback chain: this is
                 # graded RAG output — see app/ai/retry.py's stream_generation.
-                yield from stream_generation(prompt, gemini_model=model)
+                yield from stream_generation(prompt, model=model)
                 return
             # Retrieval ran but nothing cleared the relevance floor —
             # Priority 4: decline visibly rather than let Gemini answer
@@ -277,4 +318,4 @@ def stream_route_query(
     # (everything that isn't a tool, an attachment, or a knowledge-base
     # match lands here), so it was the highest-impact place this bug
     # could still exist even after Priority 5 supposedly fixed it.
-    yield from stream_generation(prompt, gemini_model=model)
+    yield from stream_generation(prompt, model=model)

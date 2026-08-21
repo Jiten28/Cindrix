@@ -1,61 +1,62 @@
-"""Loads ai4bharat/MSMARCO-XI (the hackathon-mandated dataset) via
-HuggingFace `datasets`, streamed rather than bulk-downloaded — see
-docs/Architecture.md's "Retrieval & Vector Store" section for why.
+"""Loads ai4bharat/MSMARCO-XI (the hackathon-mandated dataset) by reading the
+target language's parquet shard directly with `huggingface_hub` +
+`pyarrow`, deliberately BYPASSING the HuggingFace `datasets` library — see
+docs/Architecture.md's "Retrieval & Vector Store" section for the history.
 
-Real dataset facts — CORRECTED TWICE now after two real, different
-crashes:
-  1. `BuilderConfig 'hi' not found. Available: ['default']` — fixed by
-     switching to the single "default" config (see LANGUAGE_CODE_MAP
-     below), filtering by `target_lang` after loading.
-  2. That fix crashed differently: MemoryError + WinError 10038 while
-     downloading `train/asmtrain.parquet` (Assamese). Root cause: the
-     "default" config isn't one combined file — it's split into
-     **per-language parquet shards** (`train/hintrain.parquet`,
-     `train/asmtrain.parquet`, etc., confirmed directly against the
-     repo's real file tree while fixing this), and streaming through
-     the concatenated "default" config still has to fetch every shard
-     in sequence before reaching a later one — Assamese apparently
-     sorts before Hindi, so the stream tried to pull all of Assamese's
-     shard (large enough to crash on its own) before ever reaching a
-     single Hindi row. Filtering by target_lang *after* loading was
-     never the problem — loading the wrong scope before filtering was.
+Why not `datasets`: it crashed three different ways against this real
+dataset, the last one fatal and opaque:
+  1. `BuilderConfig 'hi' not found. Available: ['default']`.
+  2. Streaming the combined "default" config pulled every language's shard
+     in sort order (Assamese before Hindi) and OOM'd on Assamese before
+     reaching a single Hindi row.
+  3. Loading the Hindi shard by name still died with a vague, swallowed
+     "An error occurred while generating the dataset" (an
+     `ArrowNotImplementedError: Nested data conversions not implemented`
+     surfacing from inside `datasets`' Arrow→Python formatting of the
+     nested `passages` struct), even after the full 3.72 GB shard had
+     downloaded.
 
-  **Current approach: load the target language's shard file directly**,
-  by name, instead of streaming the combined "default" config and
-  filtering afterward:
-      load_dataset("ai4bharat/MSMARCO-XI",
-                    data_files={"train": "train/hintrain.parquet"},
-                    split="train", streaming=True)
-  Shard filenames follow `{split_dir}/{iso3}{suffix}.parquet` — confirmed
-  against two real files in the repo's tree (`train/hintrain.parquet`,
-  `train/asmtrain.parquet`) plus one real validation-split example
-  (`validation/telval.parquet`), giving `train/<iso3>train.parquet` and
-  `validation/<iso3>val.parquet` as the two confirmed patterns; other
-  splits aren't confirmed to follow this and will raise clearly rather
-  than guess (see `_shard_path` below). `target_lang` is still checked
-  after loading, but now as a cheap safety check on a single
-  already-target-language shard, not a scope-defining filter over the
-  full 14-language stream — the distinction the earlier fix got wrong.
-  This also happens to *strengthen* confidence in `hin_Deva` for Hindi
-  (see LANGUAGE_CODE_MAP below): if it's wrong, the safety check now
-  fails almost immediately on the shard's first row, not after silently
-  scanning past millions of rows the way the old combined-stream
-  approach would have.
+`pyarrow` reads that same nested `passages` struct into plain Python dicts
+via `.to_pylist()` without complaint — VERIFIED directly against the real
+shard while writing this (a real row's `passages` came back as
+`{English_passages, Translated_passages, is_selected}`), which is exactly
+the conversion `datasets` couldn't do. So the fix is to skip `datasets`
+entirely and go `huggingface_hub.hf_hub_download()` → `pyarrow.parquet` →
+Python dicts.
 
-  - Two splits: `train` (10.1M rows total across all shards),
-    `validation` (1.37M rows total).
-  - Row shape (confirmed, unchanged from before): source_lang,
-    target_lang, meta (translation metadata), query, Answer, query_id,
-    query_type, passages: {is_selected, English_passages,
-    Translated_passages}, Eng_Query, Eng_Answer.
+Real shard facts, VERIFIED against the live repo file tree and a real row
+(not convention, not a prior session's claim):
+  - Shards are per-language parquet files named `{split}/{iso3}{suffix}.parquet`,
+    confirmed for all 13 train shards (`train/hintrain.parquet`,
+    `train/asmtrain.parquet`, …) via the repo's real file tree. Hindi is
+    `train/hintrain.parquet`, 3,719,813,179 bytes (~3.72 GB).
+  - `train/hintrain.parquet` is a SINGLE parquet row group of 778,638 rows,
+    all `target_lang == "hin_Deva"` — so `hin_Deva` for Hindi is now
+    confirmed off a real row, not just the ISO convention. Because it's one
+    monolithic row group, there's no cheap way to read a sub-range remotely
+    (reading any row forces reading the whole row group's column chunks);
+    hence we `hf_hub_download` the shard once to the local HF cache — a
+    one-time cost, cached across runs — then read locally, which is fast
+    (~1.7 s for 2,000 rows with column projection) and repeatable.
+  - Row shape (confirmed): source_lang, target_lang, meta, query, Answer,
+    query_id, query_type, passages: {is_selected, English_passages,
+    Translated_passages}, Eng_Query, Eng_Answer, query. We project only the
+    columns app/rag/chunking.py's metadata_aware_chunks() actually consumes
+    (see _INGEST_COLUMNS) so the read decodes less than the full ~3.72 GB.
 
-`datasets` isn't installed in every environment this code might run in
-(e.g. this was built in a sandboxed session with no network to pip-install
-it) — soft-imported below, with a small local fixture built from the
-dataset's own documented example row so the rest of the pipeline
-(chunking, embedding, vector store) is still testable without it. The
-fixture is loudly logged as a fixture — nothing here pretends it's the
-real dataset.
+Two splits: `train` (10.1M rows total across all shards), `validation`
+(1.37M total).
+
+`huggingface_hub`/`pyarrow` aren't guaranteed installed in every environment
+this code might run in — soft-imported below, with a small local fixture
+built from the dataset's own documented example rows so the rest of the
+pipeline (chunking, embedding, vector store) is still testable without a
+network/dataset. The fixture is loudly logged as a fixture — nothing here
+pretends it's the real dataset. Crucially, the fixture is ONLY used when the
+libraries are genuinely absent; a real load that FAILS is not silently
+papered over with the fixture (that's how every past benchmark ended up
+secretly running on 5 fixture chunks) — it is logged with a full traceback
+and re-raised so the failure is impossible to miss.
 """
 
 import logging
@@ -65,39 +66,28 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+# Bypass `datasets` (see module docstring) — read the parquet shard directly.
 try:
-    import datasets as _hf_datasets
-    _HF_DATASETS_AVAILABLE = True
+    from huggingface_hub import hf_hub_download as _hf_hub_download
+    import pyarrow.parquet as _pq
+    _PARQUET_STACK_AVAILABLE = True
 except ImportError:
-    _HF_DATASETS_AVAILABLE = False
+    _PARQUET_STACK_AVAILABLE = False
 
 
 # Short code -> full `target_lang` value used in the dataset's rows
 # (ISO 639-3 + ISO 15924 script, e.g. "hin_Deva" = Hindi + Devanagari) —
 # the ISO 639-3 part (before the underscore) doubles as the shard filename
-# prefix (see _shard_path below), confirmed for "asm" (Assamese) and "hin"
-# (Hindi) against real files in the repo's tree.
+# prefix (see _shard_path below), confirmed for all 13 train shards against
+# the repo's real file tree.
 #
-# Confidence varies by entry — documented explicitly rather than presenting
-# all 14 as equally certain:
-#   - "as" -> "asm_Beng": CONFIRMED — this is the literal target_lang value
-#     in the dataset card's own documented example row, AND its shard
-#     filename (train/asmtrain.parquet) was independently observed for
-#     real (the crash this file was fixed for happened downloading it).
-#   - "hi" -> "hin_Deva": shard filename (train/hintrain.parquet) CONFIRMED
-#     against the real file tree. The target_lang value itself follows the
-#     identical convention confirmed for "as" above and for the other 12
-#     codes below against a sibling AI4Bharat dataset's README
-#     (ai4bharat/IndicCorpV2) — strong convention evidence — but still
-#     hasn't been read off a literal MSMARCO-XI row's target_lang field.
-#     Now a much cheaper thing to disprove than before this fix: loading
-#     the Hindi shard directly means a wrong value fails on the very
-#     first row, not after scanning millions of rows from other languages.
-#   - bn/gu/kn/ml/mr/ne/or/pa/sa/ta/te/ur: same sibling-dataset convention
-#     evidence as "hi", shard filenames NOT individually confirmed (only
-#     the train/{iso3}train.parquet PATTERN is, from asm+hin) — see
-#     _shard_path's docstring for what happens if a given language's
-#     shard doesn't exist at the assumed path.
+# "hi" -> "hin_Deva" and "as" -> "asm_Beng" are CONFIRMED against real rows /
+# the dataset card's own example. The other 12 follow the identical ISO
+# 639-3 + script convention; their shard filenames match the confirmed
+# train/{iso3}train.parquet pattern (all 13 seen in the real tree), but their
+# individual target_lang values haven't each been read off a literal row.
+# A wrong value now fails on the shard's very first row (see the per-row
+# safety check in load_msmarco_xi), not after scanning millions of rows.
 LANGUAGE_CODE_MAP = {
     "as": "asm_Beng", "bn": "ben_Beng", "gu": "guj_Gujr", "hi": "hin_Deva",
     "kn": "kan_Knda", "ml": "mal_Mlym", "mr": "mar_Deva", "ne": "npi_Deva",
@@ -121,7 +111,7 @@ def resolve_target_lang_code(language: str) -> str:
     )
 
 
-# split -> filename suffix, confirmed against one real example each:
+# split -> filename suffix, confirmed against real examples:
 # train/hintrain.parquet + train/asmtrain.parquet -> "train"/train;
 # validation/telval.parquet -> "val"/validation. Only these two splits
 # are confirmed to follow this pattern.
@@ -148,15 +138,24 @@ def _shard_path(target_lang_code: str, split: str) -> str:
     return f"{split}/{iso3}{suffix}.parquet"
 
 
-# How often to log scan progress while reading through the (now
-# single-language, much smaller) shard — still worth having for a
-# multi-GB file over a real network connection.
-_SCAN_LOG_EVERY = 200_000
+# Only the columns metadata_aware_chunks() actually consumes — projecting
+# these out of the read means pyarrow decodes far less than the full shard
+# (skips meta/Answer/Eng_Query/Eng_Answer/source_lang). See app/rag/chunking.py.
+_INGEST_COLUMNS = ["target_lang", "query", "query_id", "query_type", "passages"]
 
-# The dataset card's own documented example row (see app/rag/chunking.py's
-# docstring / module tests for the same shape) — used only when `datasets`
-# truly isn't installed, purely so the rest of the pipeline has something
-# real-shaped to run against.
+# pyarrow decodes the shard's single row group in batches of this many rows;
+# with a small RAG_INGEST_MAX_ROWS cap we stop after the first batch or two
+# instead of decoding all 778k rows.
+_READ_BATCH_SIZE = 1024
+
+# How often to log scan progress while reading through the shard.
+_SCAN_LOG_EVERY = 5_000
+
+# The dataset card's own documented example rows (see app/rag/chunking.py's
+# docstring / module tests for the same shape) — used ONLY when the parquet
+# stack truly isn't installed, purely so the rest of the pipeline has
+# something real-shaped to run against. A real load that *fails* does NOT
+# fall back to these (see load_msmarco_xi) — it re-raises.
 _FIXTURE_ROWS = [
     {
         "source_lang": "eng_Latn", "target_lang": "hin_Deva",
@@ -201,135 +200,144 @@ _FIXTURE_ROWS = [
 ]
 
 
+def _yield_fixture(target_lang_code: str, max_rows: Optional[int]) -> Iterator[Dict[str, Any]]:
+    matched = 0
+    for row in _FIXTURE_ROWS:
+        if row.get("target_lang") != target_lang_code:
+            continue
+        yield row
+        matched += 1
+        if max_rows is not None and matched >= max_rows:
+            break
+
+
 def load_msmarco_xi(
     language: Optional[str] = None,
     split: Optional[str] = None,
     max_rows: Optional[int] = None,
 ) -> Iterator[Dict[str, Any]]:
     """Yields rows from ai4bharat/MSMARCO-XI matching `language`, one at a
-    time (streamed — even a single language's shard is multiple GB, so
-    this never materializes the whole thing in memory or on disk).
+    time, capped at `max_rows` matched rows.
 
-    Loads the target language's shard file DIRECTLY (e.g.
-    `train/hintrain.parquet` for Hindi) rather than streaming the combined
-    "default" config and filtering afterward — see the module docstring
-    for why that earlier approach crashed (it had to fetch every other
-    language's full shard first, in whatever order the combined stream
-    puts them in, before ever reaching a matching row). `target_lang` is
-    still checked per row, now as a safety check on an already-scoped
-    shard rather than the thing doing the scoping.
+    Downloads the target language's shard file DIRECTLY (e.g.
+    `train/hintrain.parquet` for Hindi) via huggingface_hub to the local HF
+    cache (a one-time cost, cached across runs), then reads it with pyarrow —
+    bypassing the HuggingFace `datasets` library entirely, which couldn't
+    decode the nested `passages` struct (see the module docstring). Only the
+    columns downstream chunking needs are projected out of the read.
+
+    `target_lang` is still checked per row, as a cheap safety check on an
+    already-single-language shard — a mismatch in the first few rows means
+    the shard-filename assumption is wrong, and is flagged immediately.
 
     Falls back to a small local fixture (2 rows, real documented schema)
-    if `datasets` isn't installed, clearly logged as such.
+    ONLY if huggingface_hub/pyarrow aren't installed, clearly logged as such.
+    A real load that *fails* is logged with a traceback and RE-RAISED — it is
+    never silently replaced by the fixture, so a broken ingest can't
+    masquerade as a successful one (the exact trap that had every prior
+    benchmark secretly running on fixture data).
     """
     language = language or settings.RAG_DATASET_LANGUAGE
     split = split or settings.RAG_DATASET_SPLIT
     max_rows = max_rows if max_rows is not None else settings.RAG_INGEST_MAX_ROWS
     target_lang_code = resolve_target_lang_code(language)
 
-    if not _HF_DATASETS_AVAILABLE:
+    if not _PARQUET_STACK_AVAILABLE:
         logger.warning(
-            "[rag.dataset] `datasets` package not installed — yielding "
+            "[rag.dataset] huggingface_hub/pyarrow not installed — yielding "
             "FIXTURE rows, NOT the real ai4bharat/MSMARCO-XI dataset. Run "
-            "`pip install datasets` and re-ingest before trusting anything "
-            "downstream of this for the actual submission.",
+            "`pip install huggingface_hub pyarrow` and re-ingest before "
+            "trusting anything downstream of this for the actual submission.",
         )
-        matched = 0
-        for row in _FIXTURE_ROWS:
-            if row.get("target_lang") != target_lang_code:
-                continue
-            yield row
-            matched += 1
-            if max_rows is not None and matched >= max_rows:
-                break
+        yield from _yield_fixture(target_lang_code, max_rows)
         return
 
     shard_path = _shard_path(target_lang_code, split)
     logger.info(
-        "[rag.dataset] loading shard %s directly (target_lang=%r), capped "
-        "at %s matched rows",
-        shard_path, target_lang_code, max_rows,
+        "[rag.dataset] downloading/opening shard %s (target_lang=%r), capped "
+        "at %s matched rows", shard_path, target_lang_code, max_rows,
     )
     try:
-        stream = _hf_datasets.load_dataset(
-            settings.RAG_DATASET_NAME,
-            data_files={split: shard_path},
-            split=split,
-            streaming=False,
+        local_path = _hf_hub_download(
+            repo_id=settings.RAG_DATASET_NAME,
+            filename=shard_path,
+            repo_type="dataset",
         )
-    except Exception as e:
-        logger.error(
-            "[rag.dataset] failed to load shard %s from %s: %s — falling "
-            "back to FIXTURE rows, NOT the real dataset. If this is a 404/"
-            "file-not-found error, the shard filename pattern in "
-            "_shard_path() is likely wrong for this language/split — check "
-            "the repo's real file tree (huggingface.co/datasets/%s/tree/"
-            "main/%s) and fix _SHARD_SUFFIX_BY_SPLIT or the filename "
-            "construction rather than guessing again.",
-            shard_path, settings.RAG_DATASET_NAME, e,
-            settings.RAG_DATASET_NAME, split,
+        parquet_file = _pq.ParquetFile(local_path)
+    except Exception:
+        # Do NOT fall back to the fixture here — a failed real load must be
+        # loud, not silently swapped for 2 fixture rows. If this is a 404/
+        # file-not-found, the shard filename pattern in _shard_path() is
+        # likely wrong for this language/split — check the repo's real file
+        # tree (huggingface.co/datasets/%s/tree/main/%s) and fix
+        # _SHARD_SUFFIX_BY_SPLIT / the filename construction rather than
+        # guessing again.
+        logger.exception(
+            "[rag.dataset] failed to download/open shard %s from %s — "
+            "re-raising (NOT falling back to fixture). If this is a 404, the "
+            "shard filename for this language/split is probably wrong (see "
+            "_shard_path).",
+            shard_path, settings.RAG_DATASET_NAME,
         )
-        matched = 0
-        for row in _FIXTURE_ROWS:
-            if row.get("target_lang") != target_lang_code:
-                continue
-            yield row
-            matched += 1
-            if max_rows is not None and matched >= max_rows:
-                break
-        return
+        raise
 
     matched = 0
     scanned = 0
     seen_target_langs: set = set()
-    for row in stream:
-        scanned += 1
-        row_lang = row.get("target_lang")
-        seen_target_langs.add(row_lang)
+    try:
+        for batch in parquet_file.iter_batches(batch_size=_READ_BATCH_SIZE, columns=_INGEST_COLUMNS):
+            for row in batch.to_pylist():
+                scanned += 1
+                row_lang = row.get("target_lang")
+                seen_target_langs.add(row_lang)
 
-        if row_lang == target_lang_code:
-            matched += 1
-            yield row
-            if max_rows is not None and matched >= max_rows:
-                logger.info(
-                    "[rag.dataset] reached max_rows=%d matches after scanning %d rows of %s",
-                    max_rows, scanned, shard_path,
-                )
-                return
-        elif scanned <= 5:
-            # A mismatch in the shard's very first few rows means the
-            # shard-selection assumption itself is likely wrong (e.g. this
-            # "Hindi" shard doesn't actually contain hin_Deva rows) — flag
-            # it immediately rather than only discovering it after
-            # scanning the whole (still multi-GB) shard.
-            logger.warning(
-                "[rag.dataset] row %d in %s has target_lang=%r, not the "
-                "expected %r — if this keeps happening, the shard filename "
-                "for this language is probably wrong (see _shard_path).",
-                scanned, shard_path, row_lang, target_lang_code,
-            )
+                if row_lang == target_lang_code:
+                    matched += 1
+                    yield row
+                    if max_rows is not None and matched >= max_rows:
+                        logger.info(
+                            "[rag.dataset] reached max_rows=%d matches after scanning %d rows of %s",
+                            max_rows, scanned, shard_path,
+                        )
+                        return
+                elif scanned <= 5:
+                    # A mismatch in the shard's very first rows means the
+                    # shard-selection assumption is likely wrong — flag it
+                    # immediately rather than after scanning the whole shard.
+                    logger.warning(
+                        "[rag.dataset] row %d in %s has target_lang=%r, not the "
+                        "expected %r — if this keeps happening, the shard filename "
+                        "for this language is probably wrong (see _shard_path).",
+                        scanned, shard_path, row_lang, target_lang_code,
+                    )
 
-        if scanned % _SCAN_LOG_EVERY == 0:
-            logger.info(
-                "[rag.dataset] scanned %d rows of %s, matched %d so far; "
-                "distinct target_lang values seen: %s",
-                scanned, shard_path, matched, sorted(seen_target_langs),
-            )
+                if scanned % _SCAN_LOG_EVERY == 0:
+                    logger.info(
+                        "[rag.dataset] scanned %d rows of %s, matched %d so far; "
+                        "distinct target_lang values seen: %s",
+                        scanned, shard_path, matched, sorted(seen_target_langs),
+                    )
+    except Exception:
+        logger.exception(
+            "[rag.dataset] error while reading rows from %s after %d scanned "
+            "/ %d matched — re-raising (NOT falling back to fixture).",
+            shard_path, scanned, matched,
+        )
+        raise
 
     if matched == 0:
         logger.error(
             "[rag.dataset] finished scanning all %d rows in %s and matched "
             "ZERO rows with target_lang == %r. Distinct target_lang values "
-            "actually present in this shard: %s. This means the shard "
-            "itself doesn't contain the expected language — re-check "
-            "_shard_path()'s filename construction against the real file "
-            "tree rather than assuming the pattern held for this language.",
+            "actually present: %s. The shard itself doesn't contain the "
+            "expected language — re-check _shard_path()'s filename "
+            "construction against the real file tree.",
             scanned, shard_path, target_lang_code, sorted(seen_target_langs),
         )
     else:
         logger.info(
             "[rag.dataset] finished scanning all %d rows in %s — %d total "
-            "matches for target_lang == %r (fewer than max_rows=%s, so "
-            "every match in this shard was used)",
+            "matches for target_lang == %r (fewer than max_rows=%s, so every "
+            "match in this shard was used)",
             scanned, shard_path, matched, target_lang_code, max_rows,
         )

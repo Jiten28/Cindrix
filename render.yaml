@@ -17,8 +17,6 @@ services:
         sync: false
       - key: TAVILY_API_KEY
         sync: false
-      - key: OPENWEATHER_API_KEY
-        sync: false
       - key: ADMIN_EMAILS
         sync: false
     disk:

@@ -110,7 +110,7 @@ def time_one_query(query: str, model: Optional[str] = None) -> QueryTiming:
         retry_logger = logging.getLogger("app.ai.retry")
         retry_logger.addHandler(capture)
         try:
-            for _chunk in stream_generation(prompt, gemini_model=model):
+            for _chunk in stream_generation(prompt, model=model):
                 pass  # timing generation, not collecting the text here
         finally:
             retry_logger.removeHandler(capture)

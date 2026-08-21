@@ -30,6 +30,13 @@ logger = logging.getLogger(__name__)
 # scale toward the full dataset.
 _EMBED_BATCH_SIZE = 32
 
+# Ingest is a batch job, so it opts into embed_texts' 429 retry budget (the
+# free tier caps embeddings at ~100 contents/min — see docs/Memory.md). This
+# rides out the rate window and waits rather than silently dropping chunks,
+# so the persisted index is COMPLETE. Live query embedding does NOT set this
+# (it must fail fast, not hang the request); see app/ai/embeddings.py.
+_EMBED_MAX_RETRIES = 6
+
 
 def default_index_path(language: str) -> str:
     return f"{settings.RAG_INDEX_DIR}/msmarco_xi_{language}"
@@ -66,7 +73,7 @@ def ingest(
     vectors: List[List[float]] = []
     for i in range(0, len(texts), _EMBED_BATCH_SIZE):
         batch = texts[i:i + _EMBED_BATCH_SIZE]
-        vectors.extend(embed_texts(batch))
+        vectors.extend(embed_texts(batch, max_retries=_EMBED_MAX_RETRIES))
         logger.info("[rag.ingest] embedded %d/%d chunks", min(i + _EMBED_BATCH_SIZE, len(texts)), len(texts))
 
     valid = [(v, t, m) for v, t, m in zip(vectors, texts, metadatas) if v]

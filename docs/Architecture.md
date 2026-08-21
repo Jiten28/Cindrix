@@ -5,9 +5,13 @@
 ### Backend
 - Python 3.11+
 - Flask (FastAPI acceptable as a drop-in swap if async/streaming needs outgrow Flask)
-- Gemini API via the `google-genai` SDK (primary model provider; abstracted
-  behind `app/ai/gemini_client.py` so more models can be added later — note:
-  the older `google-generativeai` package and `gemini-1.5-x` models are
+- Groq API (primary generation provider — `openai/gpt-oss-120b`, hand-rolled
+  via `requests` in `app/ai/groq_client.py`) with Gemini as the fallback; see
+  the "Generation Provider Chain" section below
+- Gemini API via the `google-genai` SDK (generation fallback, embeddings via
+  `gemini-embedding-001`, and the vision/image path; abstracted behind
+  `app/ai/gemini_client.py` so more models can be added later — note: the
+  older `google-generativeai` package and `gemini-1.5-x` models are
   deprecated/shut down, don't reintroduce them — see `Memory.md`)
 - LangChain — optional, only if it earns its complexity; otherwise hand-rolled
   RAG/tool-calling is fine and easier to explain in a review
@@ -215,9 +219,12 @@ Cindrix/
   created_at
 
 ## Integration Points
-- **Gemini API** — primary LLM, streaming responses
+- **Groq API** — primary generation LLM, streaming responses; **Gemini API**
+  — generation fallback + embeddings + vision (see "Generation Provider
+  Chain")
 - **Web search tool** — pluggable provider behind `app/tools/`
-- **Weather API** — simple REST lookup tool
+- **Weather API** — Open-Meteo (keyless geocoding + forecast REST APIs), with
+  a Gemini best-effort estimate as fallback
 - **RAG pipeline** — file upload → parse (PDF/DOCX/TXT) → chunk → embed → store in
   `data/embeddings/` → retrieve on query
 
@@ -278,10 +285,10 @@ Added to satisfy the HHGoa hackathon's grading criteria — see
 ### Dataset
 
 `ai4bharat/MSMARCO-XI` (`app/rag/dataset.py`) — the hackathon-mandated
-corpus, not a sample. Got this wrong twice in earlier sessions before it
-actually worked against real data — both mistakes and the fixes are
-worth recording here, since they're exactly the kind of thing a stale
-training-data assumption or an out-of-date usage snippet produces:
+corpus, not a sample. Got this wrong three times in earlier sessions
+before it actually worked against real data — all three mistakes and the
+fixes are worth recording here, since they're exactly the kind of thing a
+stale training-data assumption or an out-of-date usage snippet produces:
 
 1. **First mistake:** assumed 14 per-language configs
    (`load_dataset(..., "hi", split="train")`), copied from the dataset
@@ -302,12 +309,31 @@ training-data assumption or an out-of-date usage snippet produces:
    to pull all of Assamese's (large) shard before ever reaching a single
    Hindi row.
 
-**Current, working approach:** load the target language's shard file
-directly, by name, instead of streaming the combined config:
+3. **Third mistake, after fixing the second:** loading the Hindi shard
+   by name still went through the `datasets` library, which downloaded
+   the full 3.72 GB shard successfully and then died with a vague,
+   swallowed "An error occurred while generating the dataset" — an
+   `ArrowNotImplementedError: Nested data conversions not implemented`
+   surfacing from inside `datasets`' Arrow→Python formatting of the
+   nested `passages` struct. `datasets` simply couldn't decode that
+   column shape.
+
+**Current, working approach:** skip the `datasets` library entirely.
+Download the target language's shard file by name with
+`huggingface_hub.hf_hub_download()` (to the local HF cache — a one-time
+cost, cached across runs) and read it with `pyarrow.parquet`, which
+decodes the nested `passages` struct into plain Python dicts via
+`.to_pylist()` without complaint (verified directly against a real row:
+`passages` came back as `{English_passages, Translated_passages,
+is_selected}` — the exact conversion `datasets` couldn't do):
 ```python
-load_dataset("ai4bharat/MSMARCO-XI",
-              data_files={"train": "train/hintrain.parquet"},
-              split="train", streaming=True)
+local_path = hf_hub_download(repo_id="ai4bharat/MSMARCO-XI",
+                             filename="train/hintrain.parquet",
+                             repo_type="dataset")
+for batch in pq.ParquetFile(local_path).iter_batches(
+        batch_size=1024, columns=_INGEST_COLUMNS):
+    for row in batch.to_pylist():
+        ...
 ```
 Shard filenames follow `{split_dir}/{iso3}{suffix}.parquet` — confirmed
 against real files in the repo's tree (`train/hintrain.parquet`,
@@ -315,31 +341,41 @@ against real files in the repo's tree (`train/hintrain.parquet`,
 `train/<iso3>train.parquet` and `validation/<iso3>val.parquet` as the two
 confirmed patterns (`app/rag/dataset.py`'s `_shard_path()` raises clearly
 for any other split rather than guessing at an unconfirmed pattern).
-`target_lang` is still checked per row after loading — now as a cheap
-safety check on an already-scoped, single-language shard rather than the
-thing doing the scoping, and it fires almost immediately (first few rows)
-if the shard-filename assumption turns out wrong for a given language,
-rather than only surfacing after scanning millions of rows the old
-combined-stream approach would have needed.
+Only the columns `metadata_aware_chunks()` consumes are projected out of
+the read (`_INGEST_COLUMNS`), so pyarrow decodes far less than the full
+~3.72 GB. `target_lang` is still checked per row — now as a cheap safety
+check on an already-scoped, single-language shard rather than the thing
+doing the scoping, and it fires on the shard's first few rows if the
+filename assumption turns out wrong for a given language, rather than
+only after scanning millions of rows the old combined-stream approach
+would have needed.
 
-Row shape (confirmed, unchanged since the first fix): `{query, query_id,
-query_type, target_lang, Eng_Query, Eng_Answer, passages: {is_selected,
-English_passages, Translated_passages}}`. Loaded with `streaming=True` —
-never bulk-downloads the multi-GB shard file — and capped at
-`RAG_INGEST_MAX_ROWS` (default 2000). **Disclosed scope decision, not a
-hidden shortcut:** ingesting a full shard (millions of rows) isn't a
-realistic hackathon-timeline operation (embedding cost and time alone
-rule it out); the cap uses real, unmodified rows from the real shard,
-just a bounded number of them. Raise `RAG_INGEST_MAX_ROWS` for a larger
-index if time/budget allows before submission.
+Row shape (confirmed against a real row): `{source_lang, target_lang,
+meta, query, Answer, query_id, query_type, passages: {is_selected,
+English_passages, Translated_passages}, Eng_Query, Eng_Answer}`. The
+Hindi shard `train/hintrain.parquet` is a single parquet row group of
+778,638 rows, all `target_lang == "hin_Deva"` (so `hin_Deva` is now
+confirmed off real rows, not just the ISO convention). Because it's one
+monolithic row group there's no cheap remote sub-range read — hence the
+one-time `hf_hub_download` of the whole shard, then fast local reads.
+Ingest is capped at `RAG_INGEST_MAX_ROWS` (**default 100**). **Disclosed
+scope decision, not a hidden shortcut:** the binding constraint isn't the
+download but the Gemini free-tier embedding quota (~100 contents/minute —
+see `docs/Memory.md`); at ~10 passages/row that's ~10 rows/min, so the
+cap keeps ingestion to a bounded, *fully-embedded* subset rather than a
+partial one. Real, unmodified rows from the real shard, just a bounded
+number of them. Raise `RAG_INGEST_MAX_ROWS` on a paid embedding tier
+where the RPM cap is higher.
 
-`datasets` is soft-imported — if it's not installed, `load_msmarco_xi()`
-falls back to a small local fixture built from the dataset card's own
-documented example row, with a loud warning logged every time (never
-silently mistaken for the real dataset). This project was built in a
-sandboxed session with no network access to `pip install datasets`, so
-that fallback is exercised by necessity — install it before trusting the
-knowledge base for the real submission.
+`huggingface_hub`/`pyarrow` are soft-imported — if neither is installed,
+`load_msmarco_xi()` falls back to a small local fixture built from the
+dataset card's own documented example rows, with a loud warning logged
+every time (never silently mistaken for the real dataset). Crucially, a
+real load that *fails* (network, 404, decode error) is **not** papered
+over with the fixture — it's logged with a full traceback and re-raised,
+so a broken ingest can't masquerade as a successful one. This directly
+closes the trap that had every earlier benchmark secretly running on 5
+fixture chunks. `datasets` is no longer a dependency at all.
 
 ### Chunking strategies (`app/rag/chunking.py`)
 
@@ -488,18 +524,25 @@ deliberately unaddressed rather than silently built beyond what was asked
 for a text-generation-focused fix. Flagging it here so it doesn't get
 lost.
 
-**Why Groq is primary:** based on Groq's generally-published LPU-hardware
-inference speed (independent third-party benchmarks showing 3-5x faster
-time-to-first-token than Gemini Flash) — not yet confirmed by this
-project's own `app/rag/benchmark.py`, which is the honest state as of
-this change. That confirmation is a separate, explicit follow-up step
-(`docs/Testing.md` §17b) — re-run the benchmark with real
-`GROQ_API_KEY`/`GOOGLE_API_KEY` once both are configured, and update this
-section with the real number once that's done. If it turns out Groq
-*isn't* actually faster for this specific pipeline (small prompts, Indic
-text, this exact retrieval-then-generate shape), that's worth knowing and
-acting on, not a reason to keep the general-benchmark-based ordering out
-of inertia.
+**Why Groq is primary:** originally chosen on Groq's generally-published
+LPU-hardware inference speed (independent third-party benchmarks showing
+3-5x faster time-to-first-token than Gemini Flash). Now partially confirmed
+by this project's own `app/rag/benchmark.py`: a real run on 2026-08-21
+against the built 904-vector Hindi index had Groq (`openai/gpt-oss-120b`)
+serve **5/5** grounded queries as primary with **zero fallbacks**,
+generating a grounded Hindi answer in **~0.96 s P50 / ~1.08 s P70 / ~1.28 s
+P100**. That confirms Groq reliably fills the primary slot at ~1 s per
+grounded Hindi answer and that the provider routing works end-to-end. What
+this run does *not* establish is a head-to-head Groq-vs-Gemini latency
+comparison — because Groq never failed, the Gemini fallback path was never
+exercised, so the 3-5x figure remains third-party, not reproduced here.
+Producing a direct comparison would require deliberately forcing a fallback;
+worth doing later, but the ordering is sound as-is. (Full-benchmark caveat:
+the query-embedding stage was substituted with a real stored index vector
+for this run because the free-tier daily embedding quota was already
+consumed building the index that day — retrieval and generation numbers are
+real, embed-query latency was not measured. See the Latency harness section
+and `docs/Testing.md` §17b.)
 
 **The chain, in order:**
 1. **Groq** (`app/ai/groq_client.py`, OpenAI-compatible `/chat/completions`
@@ -576,12 +619,46 @@ set, `embed_query`/`stream_gemini` both short-circuit without a real
 network call (existing behavior, unchanged), so the report is marked
 `"is_self_test": true` with an explicit note, and `meets_target` is
 forced `false` — it never claims to hit the target using numbers that
-didn't involve a real model call. This project was built in a sandboxed
-session with no `GOOGLE_API_KEY`/network access, so the only numbers
-produced so far are self-test ones proving the harness mechanics work,
-not real production latency — **run `python -m app.rag.benchmark` with a
-real key before trusting or reporting any actual P50/P70/P100 for the
-submission.**
+didn't involve a real model call.
+
+**Real numbers (run 2026-08-21, against the built 904-vector Hindi index,
+both keys configured):**
+
+| Stage | P50 | P70 | P100 |
+|---|---|---|---|
+| embed query | *(stubbed — see below)* | | |
+| vector retrieval (FAISS, local) | 0.90 ms | 1.16 ms | 1.21 ms |
+| generation (Groq `gpt-oss-120b`) | 957.7 ms | 1076.8 ms | 1275.6 ms |
+| **end-to-end** | 958.6 ms | 1077.9 ms | 1276.3 ms |
+
+5/5 queries grounded, all 5 served by **Groq (primary)** with zero
+fallbacks (`served_by_breakdown: {"Groq (primary)": 5}`).
+
+Two honest caveats on this run, both recorded in the report JSON itself
+(`data/rag_index/latency_report.json`, `measurement_mode` /
+`embed_query_note` fields):
+
+1. **The query-embedding stage was not measured.** The free-tier daily
+   embedding quota (1000 requests/day,
+   `EmbedContentRequestsPerDayPerUserPerProjectPerModel-FreeTier`) was
+   consumed building the 904-vector index earlier the same day, so a live
+   `embed_query` would 429. To measure the *rest* of the real pipeline, the
+   query vector was substituted with a real vector reconstructed from the
+   FAISS index (which makes grounding pass at cosine ~1.0). Retrieval and
+   generation numbers are fully real; the embed-query number is not.
+   Re-run the plain `python -m app.rag.benchmark` after the daily quota
+   resets for a true end-to-end embed figure — one `batchEmbedContents`
+   call for a single text, empirically ~100-400 ms from the ingest run's
+   per-batch timings.
+2. **The <200 ms end-to-end target is not met — and structurally can't be
+   by this shape of pipeline.** Retrieval, the stage a vector-DB choice
+   actually governs, is ~1 ms (three orders of magnitude under target). The
+   end-to-end number is dominated ~99.9% by the LLM generation itself
+   (~1 s for a full grounded completion), which no retrieval optimization
+   can shrink — a real generated answer costs ~1 s of model time regardless
+   of index. So the honest reading: the *retrieval* pipeline is far under
+   200 ms; *end-to-end with a full generated answer* is ~1 s and
+   generation-bound. `meets_target` is `false` and the report says why.
 
 ## Deployment
 - Dockerfile + docker-compose for local parity

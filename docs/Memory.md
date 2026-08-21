@@ -14,7 +14,7 @@
 > — fix it back to these two values rather than trusting what's already
 > written elsewhere as a source of truth.
 
-Last updated: Starfield light-theme redesign finalized (Soft Bokeh Motes) and stale "Gemini Flash" model-label report — see entries immediately below. Hackathon Phase 5 (dataset/fallback fixes) still the most recent *hackathon-track* entry; none of this frontend-only work touches it.
+Last updated: Hackathon Phase 6 — first real-environment verification run (2026-08-21). Parquet-bypass ingest, Open-Meteo weather, and Groq-primary provider routing all confirmed live; real ingest (904/1000 chunks embedded, dim 3072, daily embedding quota hit) and real benchmark numbers (retrieval ~1 ms, Groq generation P70 ~1.08 s, `meets_target` false because end-to-end is generation-bound) recorded. See the Hackathon Phase 6 entry below.
 
 ---
 
@@ -214,6 +214,78 @@ tuning the mouse-interactivity constants against a real cursor.
 
 ---
 
+## Hackathon Track — Hackathon Phase 6 (Real-Environment Verification: Parquet Bypass, Open-Meteo, Provider Routing, Real Ingest + Benchmark Numbers)
+
+The first hackathon phase run against a **real environment** (real network,
+real `GOOGLE_API_KEY` + `GROQ_API_KEY`) rather than a sandbox — so several
+things previously "built but unverified" are now confirmed, and a couple of
+prior claims turned out to be wrong and were corrected.
+
+**1. HuggingFace ingest bypass (`app/rag/dataset.py`) — verified.** The
+Phase 5 fix (load the language's shard directly) still crashed on the real
+run: `datasets` threw `ArrowNotImplementedError` decoding the nested
+`passages` struct even with the shard fully downloaded — the *third* distinct
+dataset-load crash. Fixed for real by dropping `datasets` entirely on the
+load path: `huggingface_hub.hf_hub_download()` to fetch the shard, then
+`pyarrow.ParquetFile.iter_batches(columns=_INGEST_COLUMNS).to_pylist()` to
+read it. `datasets` is **no longer a dependency**. On real failure the loader
+now `logger.exception()`s and **re-raises** — no fixture-on-real-failure
+masking (fixture only when the parquet stack genuinely isn't importable).
+`hin_Deva` for Hindi is now **confirmed against real rows** (the shard's
+first 100 rows were all `hin_Deva`), not just filename convention. The Hindi
+shard `train/hintrain.parquet` is a single row group, 778,638 rows, 3.72 GB,
+all `hin_Deva`.
+
+**2. Weather → keyless Open-Meteo (`app/tools/weather.py`) — done.** Replaced
+OpenWeatherMap with Open-Meteo (geocoding + forecast, WMO weather-code →
+text), no API key. Broadened detection/extraction for city-first ("Hyderabad
+weather") and Hindi ("दिल्ली का मौसम") phrasing. Removed `OPENWEATHER_API_KEY`
+from settings/.env.example/render.yaml. Gemini-estimate fallback contract
+kept for cities that don't geocode.
+
+**3. Model selector → provider routing — done.** `AVAILABLE_MODELS` gained a
+`provider` field; Groq (`openai/gpt-oss-120b`) is first and default. Gemini
+id validation (`gemini_client.py`) is scoped to the Gemini-only allow-list
+(`GEMINI_MODEL_IDS`); `app/ai/retry.py` routes primary/fallback by the
+*selected* model's provider. Confirmed live: 5/5 benchmark queries served by
+Groq (primary) with zero fallbacks.
+
+**4. Gemini free-tier embedding has TWO quotas — key finding.** Not one rate
+limit but two: a per-minute cap (~100 requests/min,
+`EmbedContentRequestsPerMinutePerUserPerProjectPerModelFreeTier`) **and** a
+hard **1000 requests/day** cap
+(`EmbedContentRequestsPerDayPerUserPerProjectPerModel-FreeTier`), each text in
+a batch counting individually. See `[[gemini-embedding-free-tier-limit]]`.
+
+**5. Real ingest run (2026-08-21).** `python -m app.rag.ingest`, default 100
+rows → 1000 passage-level chunks. `embed_texts`' opt-in 429-retry rode out
+the per-minute windows fine, but near the end the run hit the **daily** cap,
+which retries can't beat (window doesn't reset for hours). Result:
+**904/1000 chunks embedded (dim 3072), 96 skipped**, in ~1649 s (~27.5 min).
+The 96 skips were logged explicitly (`96/1000 chunks failed to embed (empty
+vector) — skipped`) — **not silent**, which is the whole point of the
+Phase-5-era silent-drop fix working as designed. Saved a real 904-vector
+FAISS index (`data/rag_index/msmarco_xi_hi`). The daily embedding quota is
+now exhausted for the day.
+
+**6. Real benchmark run (2026-08-21).** Because the daily embed quota was
+spent building the index, `embed_query` was substituted with a real stored
+FAISS vector (self-matches at cosine ~1.0, so grounding passes) to measure
+the rest of the real pipeline. Retrieval + generation are fully real; the
+embed-query stage was not measured this run.
+- vector retrieval (local FAISS): P50 **0.90 ms** / P70 **1.16 ms**.
+- generation (Groq `gpt-oss-120b`): P50 **957.7 ms** / P70 **1076.8 ms**.
+- end-to-end: P50 **958.6 ms** / P70 **1077.9 ms**; 5/5 Groq (primary).
+- `meets_target` = **false**: P70 ~1.08 s ≫ 200 ms target — but retrieval is
+  ~1 ms (far *under* target) and end-to-end is ~99.9% the LLM generation
+  (~1 s for a full grounded completion), which no retrieval tuning shrinks.
+  Honest reading: the retrieval pipeline meets 200 ms with huge headroom; a
+  full generated answer is generation-bound at ~1 s. Re-run the plain
+  `python -m app.rag.benchmark` after the daily quota resets for the one
+  remaining real number (embed-query latency).
+
+---
+
 ## Hackathon Track — Hackathon Phase 5 (Dataset Shard Fix + General-Chat Fallback Coverage)
 
 New. Two real crashes/bugs, both confirmed via live testing rather than
@@ -322,7 +394,9 @@ see `Testing.md` §17b.
 - `app/agents/router.py` — both RAG-serving call sites
   (`document_rag`, `knowledge_base_rag`) swapped from
   `stream_with_retry(lambda: stream_gemini(...))` to
-  `stream_generation(prompt, gemini_model=model)`. This is the one place
+  `stream_generation(prompt, gemini_model=model)` (the `gemini_model`
+  kwarg was later renamed to `model` in Hackathon Phase 6 when the
+  selector became provider-aware — see that entry). This is the one place
   "don't touch router logic" needed a judgment call: the actual routing
   decisions (which path, guardrail checks, prompt construction) are
   byte-for-byte unchanged — only which retry-layer function serves the
@@ -662,12 +736,17 @@ markdown parsing against the exact structure that was broken.
   per-user subdirectories/files instead of one global location. Every route
   in `routes.py` that touches conversations, attachments, or analytics now
   calls `current_user_id()` first.
-- **Model selector**: `settings.AVAILABLE_MODELS` lists three real,
-  verified-current Gemini model ids. `gemini_client.py`'s `call_gemini()`/
-  `stream_gemini()`/`stream_gemini_vision()` all accept an optional `model`
-  param, validated against the allowed list (`_resolve_model()`) before it
-  can reach the actual API call — an unexpected string from the client
-  can't become an arbitrary model name in the request.
+- **Model selector**: `settings.AVAILABLE_MODELS` lists real,
+  verified-current model ids across the two providers this app actually
+  uses, each tagged with a `provider` field — Groq (`openai/gpt-oss-120b`,
+  listed first and the default) plus three Gemini variants. `settings.
+  model_provider(id)` maps a selection to its provider so `app/ai/retry.py`
+  routes it to the right primary (falling back to the other), and
+  `gemini_client.py`'s `_resolve_model()` validates an incoming override
+  against `GEMINI_MODEL_IDS` only (the Gemini subset) — so a Groq id picked
+  in the UI is never handed to the Gemini API as a model name; it resolves
+  to `GEMINI_MODEL` there instead. (This was originally three Gemini-only
+  ids; broadened to real provider routing in Hackathon Phase 6.)
 - **Settings and Profile pages** — these were sidebar buttons that did
   nothing (flagged directly by the user). Now real modals: Profile shows
   account info + join date + admin badge + logout; Settings has display
@@ -714,8 +793,11 @@ erroring or reaching the API with a bad value).
 | Phase 4 | Session-based auth (Flask signed cookies), not tokens/JWT | Same-origin SPA talking to its own backend — no cross-origin API consumers to justify token complexity |
 | Phase 4 | Not logging in still works (falls into a shared "guest" bucket) | Didn't want to force an account just to try the app; matches how the whole project behaved before this phase |
 | Phase 4 | First user ever created is auto-flagged admin | Simplest possible bootstrap for the admin panel — no separate seed script or manual DB edit needed |
-| Phase 4 | Model selector offers 3 real Gemini model ids, not fabricated multi-provider options | Honest to what's actually implemented; `gemini_client.py`'s structure is still ready for a genuinely different provider later |
-| Phase 4 | Server validates the model id against an allow-list before it reaches the Gemini API call | An unexpected string from the client should never become an arbitrary model name in a live API request |
+| Phase 4 | Model selector offers real, verified-current model ids (originally 3 Gemini; broadened to Groq + Gemini with a `provider` field in Hackathon Phase 6), not fabricated options | Honest to what's actually implemented; selecting a provider now really routes generation to it (see `app/ai/retry.py`) |
+| Phase 4 | Server validates a Gemini model override against the Gemini-only allow-list (`GEMINI_MODEL_IDS`) before it reaches the Gemini API call | An unexpected string (or a Groq id) from the client should never become an arbitrary model name in a live Gemini API request — it falls back to `GEMINI_MODEL` |
+| Hackathon Phase 6 | Bypass the HuggingFace `datasets` library; read the parquet shard directly via `huggingface_hub` + `pyarrow` | `datasets` crashed with `ArrowNotImplementedError` on the nested `passages` struct even after downloading the full shard; `pyarrow.to_pylist()` decodes it fine |
+| Hackathon Phase 6 | Weather via keyless Open-Meteo (geocoding + forecast), dropped OpenWeatherMap + `OPENWEATHER_API_KEY` | One fewer secret to provision for a feature with a perfectly good keyless provider (~10k calls/day, no signup) |
+| Hackathon Phase 6 | Ingest opts into a 429-retry budget in `embed_texts`; live query embedding does not | Batch ingest must build a COMPLETE index (ride out the ~100/min free-tier rate window), but a live query must fail fast, never hang ~45s mid-request |
 
 ## Post-Launch Fixes (after Phase 3 testing in the browser)
 - **Topbar border gap + horizontal scrollbar** — `.app.chat-active .main { padding-right: 260px/320px }` (added to reserve visual space for the docked orb) was adding to total page width, causing a horizontal scrollbar and shortening the topbar's border since the topbar sits inside that padded box. Removed entirely — the centered `.messages` column already leaves enough natural gap from the orb at normal widths without it.
