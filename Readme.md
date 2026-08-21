@@ -1,8 +1,6 @@
 # Cindrix
 
 A voice-enabled RAG assistant with a particle-sphere visual identity.
-An independent personal project, built solo — submitted to HHGoa's
-#RAGInGoa hackathon (Task #2: Voice-Enabled RAG Model).
 
 **Repo:** https://github.com/Jiten28/Cindrix
 **Live demo:** https://cindrix-ai.onrender.com/
@@ -116,9 +114,3 @@ Run:
 ```bash
 python run.py
 ```
-
-## Status
-
-Actively in development for the Aug 22, 2026 hackathon deadline. See
-`docs/Memory.md` for the current milestone and `docs/Testing.md` for
-what's verified against the real stack vs. still mocked.
