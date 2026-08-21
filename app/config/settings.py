@@ -53,13 +53,15 @@ RAG_INDEX_DIR: str = os.getenv("RAG_INDEX_DIR", "rag_index").strip()
 # docs/Architecture.md. gemini-embedding-001 compresses same-language
 # similarity into a narrow range, so a single floor can't separate "this is in
 # the corpus" from "this merely looks like it": measured true matches landed at
-# 0.65-0.82, deliberate out-of-domain queries at 0.57-0.72.
+# 0.65-0.82, out-of-domain Hindi queries at 0.60-0.72, out-of-domain English at
+# 0.57-0.60. The decline band is therefore deliberately narrow — it covers the
+# genuinely ambiguous overlap, not everything that fails to ground.
 #
 #   >= RAG_MIN_RELEVANCE   answer strictly from the retrieved excerpts
 #   >= RAG_DECLINE_FLOOR   related material, no confident match -> decline
 #   below                  corpus isn't about this -> answer conversationally
 RAG_MIN_RELEVANCE: float = float(os.getenv("RAG_MIN_RELEVANCE", "0.75"))
-RAG_DECLINE_FLOOR: float = float(os.getenv("RAG_DECLINE_FLOOR", "0.62"))
+RAG_DECLINE_FLOOR: float = float(os.getenv("RAG_DECLINE_FLOOR", "0.70"))
 
 
 # Model selector — current ids for the two providers this app uses, each tagged

@@ -32,6 +32,16 @@ _IMAGE_RE = re.compile(r"\bimage(?:s)? of\s+(.+)", re.IGNORECASE)
 _kb_store: Optional[VectorStore] = None
 _kb_store_load_attempted = False
 
+# Shared preamble for every prompt in this module. The identity clause is
+# explicit on purpose: asked "who created you?", the underlying model otherwise
+# answers with its own provider's name instead of the product's.
+_PERSONA = (
+    "You are Cindrix, a helpful, concise AI assistant. If you are asked about "
+    "your own identity, you are Cindrix — you run on third-party language "
+    "models but are not their default assistant, so never claim to be built by "
+    "whoever trained them."
+)
+
 
 def get_kb_store() -> Optional[VectorStore]:
     """Lazily load the persisted MSMARCO-XI index once per process (cached).
@@ -93,7 +103,9 @@ def _extract_city(text: str, default: str = "your area") -> str:
 def detect_tool(user_input: str, attachment: Optional[Dict] = None) -> str:
     """Pure classification (no network calls) — mirrors the checks in
     stream_route_query so the analytics label matches what actually answered.
-    A knowledge_base_rag label can still end up declining if grounding is weak."""
+    knowledge_base_rag means the query was worth checking against the corpus;
+    the turn can still decline or fall through to a conversational answer
+    depending on how well the retrieved chunks score."""
     text = user_input.strip()
     if guardrails.is_unsafe(text):
         return "unsafe_declined"
@@ -176,7 +188,7 @@ def stream_route_query(
             f"{r['title']}\n{r['link']}\n{r['snippet']}" for r in results
         )
         prompt = (
-            f"You are Cindrix, a helpful, concise AI assistant.{name_context} "
+            f"{_PERSONA}{name_context} "
             f"Use the following live web search results to answer the user's "
             f"question. Mention sources naturally where it helps, but keep it "
             f"conversational rather than a raw list.\n\n"
@@ -201,7 +213,7 @@ def stream_route_query(
             )
             context_block = "\n\n---\n\n".join(relevant_chunks)
             prompt = (
-                f"You are Cindrix, a helpful, concise AI assistant.{name_context} "
+                f"{_PERSONA}{name_context} "
                 f"The user has uploaded a document called '{attachment['filename']}'. Use the "
                 f"following excerpts from it to answer their question. If the "
                 f"excerpts don't contain the answer, say so rather than guessing.\n\n"
@@ -227,7 +239,7 @@ def stream_route_query(
             if decision == guardrails.KB_ANSWER:
                 context_block = "\n\n---\n\n".join(text for text, _score, _meta in retrieved)
                 prompt = (
-                    f"You are Cindrix, a helpful, concise AI assistant.{name_context} "
+                    f"{_PERSONA}{name_context} "
                     f"Use ONLY the following excerpts from the indexed knowledge base to "
                     f"answer the user's question. If the excerpts don't fully answer it, "
                     f"say what's missing rather than filling the gap with outside "
@@ -258,7 +270,7 @@ def stream_route_query(
 
     context = recent_context(user_id, conversation_id)
     prompt = (
-        f"You are Cindrix, a helpful, concise AI assistant.{name_context}\n\n"
+        f"{_PERSONA}{name_context}\n\n"
         f"Conversation so far:\n{context}\n\n"
         f"User: {user_input}\nCindrix:"
     )
