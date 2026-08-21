@@ -115,11 +115,16 @@
   // only ever needs this subset, and escaping HTML first keeps it safe even
   // though the content is model-generated, not directly user-controllable.
 
+  // Also used for every user-controlled value this file interpolates into
+  // innerHTML (display names, emails, attribute values) — quotes included,
+  // so it's safe inside an attribute as well as in text.
   function escapeHtml(str) {
-    return str
+    return String(str == null ? "" : str)
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
   }
 
   function renderMarkdown(raw) {
@@ -240,13 +245,16 @@
 
   // ---------- view transitions ----------
 
+  let landingHideTimer = null;
+
   function activateChatView() {
     if (conversationStarted) return;
     conversationStarted = true;
     landing.classList.add("landing-exit");
     chatSection.hidden = false;
     appRoot.classList.add("chat-active");
-    setTimeout(() => {
+    landingHideTimer = setTimeout(() => {
+      landingHideTimer = null;
       landing.hidden = true;
       // Only one orb is ever visible at a time (landing vs. docked chat) —
       // pausing the hidden one's per-particle tick (220 points, every
@@ -262,6 +270,13 @@
 
   function resetToLanding() {
     conversationStarted = false;
+    // The crossfade's pending "hide the landing section" timer would
+    // otherwise still fire after we've just shown it again, blanking both
+    // sections at once.
+    if (landingHideTimer) {
+      clearTimeout(landingHideTimer);
+      landingHideTimer = null;
+    }
     landing.hidden = false;
     landing.classList.remove("landing-exit");
     chatSection.hidden = true;
@@ -351,7 +366,13 @@
   async function refreshConversationList() {
     try {
       const res = await fetch("/api/conversations");
-      const list = await res.json();
+      const list = res.ok ? await res.json() : null;
+      // Guard the shape before clearing — a non-array body (error payload)
+      // used to fall through and render "No conversations yet".
+      if (!Array.isArray(list)) {
+        chatList.innerHTML = '<li class="chat-list-empty">Couldn\'t load conversations.</li>';
+        return;
+      }
       chatList.innerHTML = "";
       if (!list.length) {
         chatList.innerHTML = `<li class="chat-list-empty" data-i18n="chatList.empty">${window.CindrixI18n.t("chatList.empty", "No conversations yet")}</li>`;
@@ -366,7 +387,7 @@
       });
       renderSidebarActive();
     } catch (err) {
-      // best-effort — sidebar just stays as it was
+      chatList.innerHTML = '<li class="chat-list-empty">Couldn\'t load conversations.</li>';
     }
   }
 
@@ -380,7 +401,10 @@
     if (convId === currentConversationId) return;
     try {
       const res = await fetch(`/api/conversations/${convId}`);
-      if (!res.ok) return;
+      if (!res.ok) {
+        flashStateMessage("Couldn't load that conversation", 2500);
+        return;
+      }
       const conv = await res.json();
 
       messagesEl.innerHTML = "";
@@ -515,8 +539,24 @@
   // viaVoice controls whether the reply gets spoken: true only when this
   // turn came from the mic, never for typed messages.
 
+  const composerSendBtn = composerForm.querySelector(".composer-send");
+  // One generation at a time: currentConversationId is only learned from the
+  // response's X-Conversation-Id header, so a second send started before the
+  // first one's headers arrive would post conversation_id: null again and the
+  // backend would create a second conversation.
+  let generationInFlight = false;
+
+  function setGenerating(active) {
+    generationInFlight = active;
+    if (composerSendBtn) composerSendBtn.disabled = active;
+  }
+
   async function sendMessage(text, viaVoice = false) {
     if (!text.trim()) return;
+    if (generationInFlight) {
+      flashStateMessage("Still answering — one moment", 2000);
+      return;
+    }
     closeAttachMenu();
 
     activateChatView();
@@ -538,7 +578,8 @@
     await streamInto(assistantBubble, text, viaVoice);
   }
 
-  async function streamInto(assistantBubble, userText, viaVoice) {
+  async function streamInto(assistantBubble, userText, viaVoice, regenerate = false) {
+    setGenerating(true);
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
@@ -547,12 +588,18 @@
           message: userText,
           conversation_id: currentConversationId,
           model: currentModelId,
+          // Tells the backend this turn is already in history: re-answer it
+          // instead of appending the same user message a second time.
+          regenerate,
         }),
       });
 
       if (!res.ok || !res.body) {
         setAssistantContent(assistantBubble, "Something went wrong reaching Cindrix. Try again in a moment.");
         activeSphere().setState("idle");
+        // Otherwise the mic button keeps showing an active voice session that
+        // has no loop left to continue it.
+        if (voiceChatActive) setVoiceChatUI(false);
         return;
       }
 
@@ -586,13 +633,20 @@
     } catch (err) {
       setAssistantContent(assistantBubble, "Couldn't reach the Cindrix backend — is it running?");
       activeSphere().setState("idle");
+      if (voiceChatActive) setVoiceChatUI(false);
+    } finally {
+      setGenerating(false);
     }
   }
 
   function regenerateInto(group, bubble, precedingUserText) {
+    if (generationInFlight) {
+      flashStateMessage("Still answering — one moment", 2000);
+      return;
+    }
     setAssistantContent(bubble, "", { pending: true });
     activeSphere().setState("thinking");
-    streamInto(bubble, precedingUserText, false);
+    streamInto(bubble, precedingUserText, false, true);
   }
 
   composerForm.addEventListener("submit", (e) => {
@@ -801,9 +855,15 @@
   // regardless of provider. See docs/Architecture.md's STT Provider section.
 
   let sttProvider = "webspeech"; // overwritten once /api/config resolves; see below
-  // Safe no-op default in case a click races ahead of /api/config resolving
-  // (same-origin fetch, so this window is narrow) — overwritten by whichever
-  // real provider initializes below.
+  // Resolves once /api/config has landed and a provider has been wired up.
+  // Every "start voice chat" gesture awaits this rather than firing at a no-op
+  // stub, so a click that races the fetch still does the right thing.
+  let voiceProviderReady = null;
+  // null until a provider decides; false means this browser can't do voice at
+  // all, and nothing may enter the active voice-chat UI state.
+  let voiceSupported = null;
+  // Safe no-op default in case anything reaches for this before a provider has
+  // initialized — overwritten by whichever real provider initializes below.
   window.CindrixVoice = { startListening() {}, stopVoiceChat() { setVoiceChatUI(false); } };
 
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -817,15 +877,63 @@
     flashStateMessage(`Mic error: ${message}`);
   }
 
+  function voiceNotSupportedMessage() {
+    return window.CindrixI18n.t(
+      "composer.voiceNotSupported",
+      "Voice input isn't supported in this browser — try Chrome or Edge"
+    );
+  }
+
+  function markVoiceUnsupported() {
+    voiceSupported = false;
+    micBtn.disabled = true;
+    micBtn.title = voiceNotSupportedMessage();
+    micBtn.setAttribute("data-i18n-title", "composer.voiceNotSupported");
+    micBtn.setAttribute("data-i18n-aria-label", "composer.voiceNotSupported");
+    micBtn.setAttribute("aria-label", voiceNotSupportedMessage());
+  }
+
   function setVoiceChatUI(active) {
     voiceChatActive = active;
     micBtn.classList.toggle("voice-chat-active", active);
-    const label = active
-      ? window.CindrixI18n.t("composer.stopVoiceChat", "Stop voice chat")
-      : window.CindrixI18n.t("composer.startVoiceChat", "Start voice chat");
+    const key = active ? "composer.stopVoiceChat" : "composer.startVoiceChat";
+    const fallback = active ? "Stop voice chat" : "Start voice chat";
+    const label = window.CindrixI18n.t(key, fallback);
     micBtn.title = label;
     micBtn.setAttribute("aria-label", label);
+    // Keep the i18n data attributes pointed at the *current* state's key, so
+    // switching language mid-session (i18n.js's applyTranslations) doesn't
+    // relabel a running voice chat as "Start voice chat".
+    micBtn.setAttribute("data-i18n-title", key);
+    micBtn.setAttribute("data-i18n-aria-label", key);
   }
+
+  // Single entry point for every start/stop voice-chat gesture (the mic button
+  // and the sidebar's Explore > Voice item). Registered immediately, so an
+  // early click waits for /api/config instead of hitting the no-op stub, and
+  // never enters the active voice-chat UI state when voice can't start at all.
+  let voiceRequestPending = false;
+  async function requestVoiceChatToggle() {
+    if (voiceRequestPending) return;
+    voiceRequestPending = true;
+    try {
+      if (voiceProviderReady) await voiceProviderReady;
+      if (voiceChatActive) {
+        window.CindrixVoice.stopVoiceChat();
+        return;
+      }
+      if (!voiceSupported) {
+        flashStateMessage(voiceNotSupportedMessage(), 3500);
+        return;
+      }
+      setVoiceChatUI(true);
+      window.CindrixVoice.startListening();
+    } finally {
+      voiceRequestPending = false;
+    }
+  }
+
+  micBtn.addEventListener("click", requestVoiceChatToggle);
 
   // ===== Provider A: Web Speech API (browser-native, dev/fallback) =====
 
@@ -842,17 +950,13 @@
   function stopVoiceChatWebSpeech() {
     setVoiceChatUI(false);
     if (listening) recognizer.stop();
-    window.speechSynthesis.cancel();
+    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
     activeSphere().setState("idle");
   }
 
   function setupWebSpeechProvider() {
     if (!SpeechRecognition) {
-      micBtn.disabled = true;
-      micBtn.title = window.CindrixI18n.t(
-        "composer.voiceNotSupported",
-        "Voice input isn't supported in this browser — try Chrome or Edge"
-      );
+      markVoiceUnsupported();
       return;
     }
     recognizer = new SpeechRecognition();
@@ -886,15 +990,9 @@
       if (activeSphere().getState() === "listening") activeSphere().setState("idle");
     };
 
-    micBtn.addEventListener("click", () => {
-      if (voiceChatActive) {
-        stopVoiceChatWebSpeech();
-        return;
-      }
-      setVoiceChatUI(true);
-      startListeningWebSpeech();
-    });
-
+    // No mic-button listener here — requestVoiceChatToggle() above owns that
+    // gesture for both providers, so it works before this setup has run.
+    voiceSupported = true;
     window.CindrixVoice = { startListening: startListeningWebSpeech, stopVoiceChat: stopVoiceChatWebSpeech };
   }
 
@@ -908,17 +1006,14 @@
 
   function setupSarvamProvider() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
-      micBtn.disabled = true;
-      micBtn.title = window.CindrixI18n.t(
-        "composer.voiceNotSupported",
-        "Voice input isn't supported in this browser — try Chrome or Edge"
-      );
+      markVoiceUnsupported();
       return;
     }
 
     const SILENCE_RMS_THRESHOLD = 0.02; // 0-1 scale; below this counts as silence
     const SILENCE_STOP_MS = 1200; // auto-stop this long after speech ends
     const MAX_RECORDING_MS = 20000; // safety cap regardless of silence detection
+    const MAX_SILENT_ATTEMPTS = 3; // give up (instead of re-recording forever)
 
     let mediaStream = null;
     let mediaRecorder = null;
@@ -929,6 +1024,7 @@
     let maxDurationTimer = null;
     let hasHeardSpeech = false;
     let sarvamListening = false;
+    let silentAttempts = 0;
 
     function teardownAudioGraph() {
       if (silenceTimer) { clearTimeout(silenceTimer); silenceTimer = null; }
@@ -998,16 +1094,31 @@
       if (mediaRecorder.state === "recording") mediaRecorder.stop();
     }
 
+    // Nothing usable came back from a recording — retry, but only so many
+    // times in a row, otherwise a muted/too-quiet mic re-records forever with
+    // no message and no way for the user to notice.
+    function handleEmptyCapture() {
+      activeSphere().setState("idle");
+      silentAttempts++;
+      if (silentAttempts >= MAX_SILENT_ATTEMPTS) {
+        silentAttempts = 0;
+        setVoiceChatUI(false);
+        flashStateMessage("Didn't hear anything — voice chat stopped", 3500);
+        return;
+      }
+      if (voiceChatActive) startSarvamRecording();
+    }
+
     async function handleSarvamRecordingStopped() {
       teardownAudioGraph();
       if (!voiceChatActive) return; // user cancelled via stopVoiceChatSarvam
       if (!hasHeardSpeech || !audioChunks.length) {
         // Nothing usable was recorded — go back to idle rather than
         // sending an empty/near-silent clip to the STT API.
-        activeSphere().setState("idle");
-        if (voiceChatActive) startSarvamRecording();
+        handleEmptyCapture();
         return;
       }
+      silentAttempts = 0;
 
       activeSphere().setState("thinking"); // transcribing, not generating yet
       const blob = new Blob(audioChunks, { type: audioChunks[0].type || "audio/webm" });
@@ -1027,8 +1138,7 @@
           // Transcribed successfully but got nothing (e.g. silence Sarvam
           // itself couldn't parse) — same graceful non-dead-end handling
           // as WebSpeech's "no-speech" error, not a hard failure.
-          activeSphere().setState("idle");
-          if (voiceChatActive) startSarvamRecording();
+          handleEmptyCapture();
           return;
         }
         composerInput.value = data.transcript;
@@ -1042,28 +1152,23 @@
 
     function stopVoiceChatSarvam() {
       setVoiceChatUI(false);
-      window.speechSynthesis.cancel();
+      silentAttempts = 0;
+      if ("speechSynthesis" in window) window.speechSynthesis.cancel();
       if (sarvamListening) stopSarvamRecording();
       else teardownAudioGraph();
       activeSphere().setState("idle");
     }
 
-    micBtn.addEventListener("click", () => {
-      if (voiceChatActive) {
-        stopVoiceChatSarvam();
-        return;
-      }
-      setVoiceChatUI(true);
-      startSarvamRecording();
-    });
-
+    // No mic-button listener here — requestVoiceChatToggle() owns that gesture
+    // for both providers, so it works before this setup has run.
+    voiceSupported = true;
     window.CindrixVoice = { startListening: startSarvamRecording, stopVoiceChat: stopVoiceChatSarvam };
   }
 
   // Resolve which provider to wire up. Defaults to Web Speech (matches
   // pre-hackathon behavior exactly) if /api/config can't be reached at
   // all, e.g. backend not running yet during frontend-only dev.
-  fetch("/api/config")
+  voiceProviderReady = fetch("/api/config")
     .then((res) => res.json())
     .then((data) => { sttProvider = data.sttProvider || "webspeech"; })
     .catch(() => { sttProvider = "webspeech"; })
@@ -1163,6 +1268,10 @@
     analyticsBody.innerHTML = '<p class="ts-muted">Loading…</p>';
     try {
       const res = await fetch("/api/analytics/summary");
+      if (!res.ok) {
+        analyticsBody.innerHTML = '<p class="ts-muted">Couldn\'t load analytics.</p>';
+        return;
+      }
       const data = await res.json();
       renderAnalytics(data);
     } catch (err) {
@@ -1181,7 +1290,13 @@
   async function loadModels() {
     try {
       const res = await fetch("/api/models");
-      const models = await res.json();
+      const models = res.ok ? await res.json() : null;
+      // Check the shape before clearing the <select> — a non-array body would
+      // otherwise leave the dropdown permanently empty.
+      if (!Array.isArray(models) || !models.length) {
+        flashStateMessage("Couldn't load the model list — using the server default", 3000);
+        return;
+      }
       modelSelect.innerHTML = "";
       models.forEach((m) => {
         const opt = document.createElement("option");
@@ -1189,12 +1304,10 @@
         opt.textContent = m.label;
         modelSelect.appendChild(opt);
       });
-      if (models.length) {
-        currentModelId = models[0].id;
-        modelNameEl.textContent = models[0].label.replace(" (recommended)", "");
-      }
+      currentModelId = models[0].id;
+      modelNameEl.textContent = models[0].label.replace(" (recommended)", "");
     } catch (err) {
-      // best-effort — chat still works, backend just uses its own default
+      flashStateMessage("Couldn't load the model list — using the server default", 3000);
     }
   }
 
@@ -1330,18 +1443,30 @@
     const joined = new Date(currentUser.created_at).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
     profileBody.innerHTML = `
       <div class="profile-row">
-        <div class="profile-avatar">${initial}</div>
+        <div class="profile-avatar">${escapeHtml(initial)}</div>
         <div>
-          <div class="profile-name">${currentUser.display_name || currentUser.username}${currentUser.is_admin ? ' <span class="admin-badge">Admin</span>' : ""}</div>
-          <div class="profile-email">${currentUser.email}</div>
+          <div class="profile-name">${escapeHtml(currentUser.display_name || currentUser.username)}${currentUser.is_admin ? ' <span class="admin-badge">Admin</span>' : ""}</div>
+          <div class="profile-email">${escapeHtml(currentUser.email)}</div>
         </div>
       </div>
       <p class="ts-muted" style="margin:0;">Member since ${joined}</p>
       <div class="form-divider"></div>
       <button type="button" class="form-submit secondary" id="profileLogoutBtn">Log out</button>
+      <p class="form-error" id="profileError"></p>
     `;
     document.getElementById("profileLogoutBtn").addEventListener("click", async () => {
-      await fetch("/api/auth/logout", { method: "POST" });
+      const errorEl = document.getElementById("profileError");
+      errorEl.textContent = "";
+      try {
+        const res = await fetch("/api/auth/logout", { method: "POST" });
+        if (!res.ok) {
+          errorEl.textContent = "Couldn't log out. Try again.";
+          return;
+        }
+      } catch (err) {
+        errorEl.textContent = "Couldn't reach the server to log out.";
+        return;
+      }
       profileOverlay.hidden = true;
       await afterAuthChange();
     });
@@ -1377,8 +1502,9 @@
     settingsBody.innerHTML = `
       <form class="form" id="profileForm">
         <label class="form-label">Display name
-          <input type="text" id="displayNameInput" class="form-input" value="${(currentUser.display_name || "").replace(/"/g, "&quot;")}" />
+          <input type="text" id="displayNameInput" class="form-input" value="${escapeHtml(currentUser.display_name || "")}" />
         </label>
+        <p class="form-error" id="profileFormError"></p>
         <p class="form-success" id="profileFormSuccess"></p>
         <button type="submit" class="form-submit">Save changes</button>
       </form>
@@ -1414,19 +1540,24 @@
     document.getElementById("profileForm").addEventListener("submit", async (e) => {
       e.preventDefault();
       const successEl = document.getElementById("profileFormSuccess");
+      const errorEl = document.getElementById("profileFormError");
+      errorEl.textContent = "";
       try {
         const res = await fetch("/api/auth/me", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ display_name: document.getElementById("displayNameInput").value }),
         });
-        if (res.ok) {
-          currentUser = { ...currentUser, ...(await res.json()) };
-          successEl.textContent = "Saved.";
-          setTimeout(() => { successEl.textContent = ""; }, 2000);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          errorEl.textContent = data.error || "Couldn't save changes.";
+          return;
         }
+        currentUser = { ...currentUser, ...data };
+        successEl.textContent = "Saved.";
+        setTimeout(() => { successEl.textContent = ""; }, 2000);
       } catch (err) {
-        // best-effort
+        errorEl.textContent = "Couldn't reach the server.";
       }
     });
 
@@ -1488,8 +1619,8 @@
           <tbody>
             ${users.map((u) => `
               <tr>
-                <td>${u.display_name || u.username}${u.is_admin ? ' <span class="admin-badge">Admin</span>' : ""}</td>
-                <td>${u.email}</td>
+                <td>${escapeHtml(u.display_name || u.username)}${u.is_admin ? ' <span class="admin-badge">Admin</span>' : ""}</td>
+                <td>${escapeHtml(u.email)}</td>
                 <td>${u.conversation_count}</td>
                 <td>${u.message_count}</td>
               </tr>
@@ -1558,10 +1689,7 @@
       if (action === "upload") {
         fileInput.click();
       } else if (action === "voice") {
-        if (!voiceChatActive) {
-          setVoiceChatUI(true);
-          window.CindrixVoice.startListening();
-        }
+        if (!voiceChatActive) requestVoiceChatToggle();
       } else if (action === "coding") {
         fillComposer("Write code for");
       }

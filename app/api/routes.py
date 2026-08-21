@@ -26,6 +26,7 @@ from app.memory.conversation_store import (
     append_message,
     create_conversation,
     delete_conversation,
+    drop_last_assistant_message,
     list_conversations,
     load_conversation,
 )
@@ -80,6 +81,9 @@ def chat():
     user_input = (data.get("message") or "").strip()
     conversation_id = data.get("conversation_id")
     model = data.get("model")
+    # Regenerate re-answers a turn that's already stored. Appending it again
+    # would duplicate the user message and keep every discarded reply.
+    is_regenerate = bool(data.get("regenerate")) and bool(conversation_id)
     if not user_input:
         return jsonify({"error": "message is required"}), 400
 
@@ -95,7 +99,10 @@ def chat():
             set_active(_attachment_key(user_id, conversation_id), pending)
             clear_active(_attachment_key(user_id, None))
 
-    append_message(user_id, conversation_id, "user", user_input)
+    if is_regenerate and not is_new_conversation:
+        drop_last_assistant_message(user_id, conversation_id)
+    else:
+        append_message(user_id, conversation_id, "user", user_input)
     attachment = get_active(_attachment_key(user_id, conversation_id))
     tool_used = detect_tool(user_input, attachment)
     start_time = time.time()

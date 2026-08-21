@@ -106,6 +106,12 @@ class VectorStore:
     def __len__(self) -> int:
         return len(self._chunks)
 
+    @property
+    def metadatas(self) -> List[Dict[str, Any]]:
+        """Per-chunk metadata in index order — lets callers see what's indexed
+        (the benchmark draws its test queries from here)."""
+        return self._metadata
+
     # -- persistence -----------------------------------------------------
 
     def save(self, path: str) -> None:

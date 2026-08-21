@@ -23,11 +23,14 @@ GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-flash-latest").strip()
 GEMINI_EMBEDDING_MODEL: str = os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-001").strip()
 
 # --- STT provider ----------------------------------------------------------
-# Brief requires Sarvam (or ElevenLabs); the browser Web Speech API stays as the
-# dev fallback. Default "webspeech" keeps local dev working with no key; set
-# STT_PROVIDER=sarvam and a SARVAM_API_KEY for the live app.
-STT_PROVIDER: str = os.getenv("STT_PROVIDER", "webspeech").strip().lower()
+# Sarvam is the real provider; the browser Web Speech API is a keyless dev
+# fallback that only exists so `git clone && flask run` has working voice input
+# with no account. Defaults to Sarvam whenever a key is present, so a configured
+# deployment is never silently downgraded to the browser path.
 SARVAM_API_KEY: str = os.getenv("SARVAM_API_KEY", "").strip()
+STT_PROVIDER: str = os.getenv(
+    "STT_PROVIDER", "sarvam" if SARVAM_API_KEY else "webspeech"
+).strip().lower()
 SARVAM_STT_MODEL: str = os.getenv("SARVAM_STT_MODEL", "saaras:v3").strip()
 # "unknown" = auto-detect across the Indic languages the corpus covers.
 SARVAM_STT_LANGUAGE: str = os.getenv("SARVAM_STT_LANGUAGE", "unknown").strip()
@@ -39,11 +42,24 @@ RAG_DATASET_SPLIT: str = os.getenv("RAG_DATASET_SPLIT", "train").strip()
 # The dataset is 10M+ rows/language. The binding limit isn't the (cached) shard
 # download but Gemini's free-tier embedding quota (~100 contents/min), so ingest
 # is capped to a bounded, fully-embedded subset. Raise this on a paid tier.
-RAG_INGEST_MAX_ROWS: int = int(os.getenv("RAG_INGEST_MAX_ROWS", "100"))
-RAG_INDEX_DIR: str = os.getenv("RAG_INDEX_DIR", "data/rag_index").strip()
-# Cosine floor below which retrieval counts as "nothing relevant" and the app
-# declines rather than letting the model improvise from a weak match.
-RAG_MIN_RELEVANCE: float = float(os.getenv("RAG_MIN_RELEVANCE", "0.55"))
+RAG_INGEST_MAX_ROWS: int = int(os.getenv("RAG_INGEST_MAX_ROWS", "75"))
+# Deliberately NOT under data/ — data/ is the mutable runtime volume (uploads,
+# history) and a hosted persistent disk mounted there would shadow anything
+# baked into the image. The index is read-only build output, so it ships with
+# the code instead.
+RAG_INDEX_DIR: str = os.getenv("RAG_INDEX_DIR", "rag_index").strip()
+# Cosine bands that decide what happens after a knowledge-base search. Both
+# were calibrated against the built index rather than guessed — see
+# docs/Architecture.md. gemini-embedding-001 compresses same-language
+# similarity into a narrow range, so a single floor can't separate "this is in
+# the corpus" from "this merely looks like it": measured true matches landed at
+# 0.65-0.82, deliberate out-of-domain queries at 0.57-0.72.
+#
+#   >= RAG_MIN_RELEVANCE   answer strictly from the retrieved excerpts
+#   >= RAG_DECLINE_FLOOR   related material, no confident match -> decline
+#   below                  corpus isn't about this -> answer conversationally
+RAG_MIN_RELEVANCE: float = float(os.getenv("RAG_MIN_RELEVANCE", "0.75"))
+RAG_DECLINE_FLOOR: float = float(os.getenv("RAG_DECLINE_FLOOR", "0.62"))
 
 
 # Model selector — current ids for the two providers this app uses, each tagged
@@ -102,4 +118,6 @@ def warn_if_missing() -> list[str]:
         warnings.append("GROQ_API_KEY not set — Groq (primary generation provider) won't work; RAG-serving calls will fall straight to Gemini every time instead of Groq-then-Gemini.")
     if not TAVILY_API_KEY:
         warnings.append("TAVILY_API_KEY not set — image search ('image of X') disabled; general web search is unaffected (uses Gemini directly).")
+    if not SARVAM_API_KEY:
+        warnings.append("SARVAM_API_KEY not set — voice input falls back to the browser Web Speech API (dev only, Chrome/Edge, no server-side transcription).")
     return warnings

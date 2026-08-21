@@ -1,0 +1,196 @@
+{
+  "retrieval_target_ms": 200,
+  "is_self_test": false,
+  "self_test_note": null,
+  "provider_config_note": null,
+  "index_chunks": 868,
+  "query_count": 10,
+  "grounded_count": 10,
+  "expected_grounded_count": 8,
+  "grounding_note": "10/8 in-corpus queries retrieved a chunk above RAG_MIN_RELEVANCE=0.55; the 2 out-of-corpus queries are expected to ground 0 times (the guardrail declining, not a miss).",
+  "served_by_breakdown": {
+    "Groq (primary)": 10
+  },
+  "statistical_note": "10 test queries — enough to sanity-check where time goes, not a statistically rigorous P50/P70/P100 in the large-sample sense.",
+  "stages_ms": {
+    "embed_query": {
+      "p50": 451.4526000020851,
+      "p70": 458.32209999935003,
+      "p100": 1061.3985000018147
+    },
+    "embed_query_cached": {
+      "p50": 0.0010000003385357559,
+      "p70": 0.0011000010999850929,
+      "p100": 0.0017999991541728377
+    },
+    "vector_retrieval": {
+      "p50": 0.8027000003494322,
+      "p70": 0.8116999997582752,
+      "p100": 9.954299999662908
+    },
+    "generation": {
+      "p50": 1081.2069000021438,
+      "p70": 1486.8762999976752,
+      "p100": 3081.9149000017205
+    },
+    "time_to_first_token": {
+      "p50": 999.4169999990845,
+      "p70": 1065.608599998086,
+      "p100": 1857.69000000073
+    }
+  },
+  "retrieval_ms": {
+    "p50": 452.26430000184337,
+    "p70": 459.0925000011339,
+    "p100": 1071.3528000014776
+  },
+  "end_to_end_ms": {
+    "p50": 1643.6133999995945,
+    "p70": 2070.222599999397,
+    "p100": 3516.4209000031406
+  },
+  "retrieval_meets_target": false,
+  "end_to_end_note": "end_to_end_ms covers a complete generated answer and is dominated by LLM inference, so it is not compared against the 200ms retrieval target. time_to_first_token is what the streaming UI actually shows the user.",
+  "per_query": [
+    {
+      "query": "मैनहट्टन परियोजना की सफलता का तुरंत क्या प्रभाव पड़ा?",
+      "in_corpus": true,
+      "embed_ms": 1061.3985000018147,
+      "embed_cached_ms": 0.0017999991541728377,
+      "retrieve_ms": 9.954299999662908,
+      "retrieval_ms": 1071.3528000014776,
+      "ttft_ms": 919.9311000011221,
+      "generate_ms": 1026.405299999169,
+      "total_ms": 2097.7581000006467,
+      "grounded": true,
+      "top_score": 0.7530323266983032,
+      "served_by": "Groq (primary)"
+    },
+    {
+      "query": "न्याय को पीड़ित, समुदाय और अपराधी द्वारा अपराधी कृत्य के कारण हुए नुकसान की मरम्मत करने के लिए डिज़ाइन किया गया है। प्रश्न 19 विकल्प:",
+      "in_corpus": true,
+      "embed_ms": 501.5854000012041,
+      "embed_cached_ms": 0.0011999982234556228,
+      "retrieve_ms": 0.9945999991032295,
+      "retrieval_ms": 502.58000000030734,
+      "ttft_ms": 1040.2328000018315,
+      "generate_ms": 1045.1495000015711,
+      "total_ms": 1547.7295000018785,
+      "grounded": true,
+      "top_score": 0.7547118663787842,
+      "served_by": "Groq (primary)"
+    },
+    {
+      "query": "फ्लूम किस दिशा में बहता है",
+      "in_corpus": true,
+      "embed_ms": 454.6620000000985,
+      "embed_cached_ms": 0.0008999995770864189,
+      "retrieve_ms": 0.7409999998344574,
+      "retrieval_ms": 455.40299999993294,
+      "ttft_ms": 919.3997000002128,
+      "generate_ms": 1081.2069000021438,
+      "total_ms": 1536.6099000020768,
+      "grounded": true,
+      "top_score": 0.651178777217865,
+      "served_by": "Groq (primary)"
+    },
+    {
+      "query": "विभिन्न प्रकार की सामाजिक सुरक्षा विकलांगता",
+      "in_corpus": true,
+      "embed_ms": 439.6370000031311,
+      "embed_cached_ms": 0.0007999988156370819,
+      "retrieve_ms": 0.8027000003494322,
+      "retrieval_ms": 440.43970000348054,
+      "ttft_ms": 1187.811600000714,
+      "generate_ms": 1486.8762999976752,
+      "total_ms": 1927.3160000011558,
+      "grounded": true,
+      "top_score": 0.808243989944458,
+      "served_by": "Groq (primary)"
+    },
+    {
+      "query": "कारों पर अमेरिकी ध्वज के स्टिकर का क्या अर्थ है?",
+      "in_corpus": true,
+      "embed_ms": 445.4522999985784,
+      "embed_cached_ms": 0.0011000010999850929,
+      "retrieve_ms": 0.8688999987498391,
+      "retrieval_ms": 446.3211999973282,
+      "ttft_ms": 1857.69000000073,
+      "generate_ms": 2427.9835000015737,
+      "total_ms": 2874.304699998902,
+      "grounded": true,
+      "top_score": 0.8015727996826172,
+      "served_by": "Groq (primary)"
+    },
+    {
+      "query": "स्नातक छात्र कक्षा में क्या पहनते हैं",
+      "in_corpus": true,
+      "embed_ms": 458.32209999935003,
+      "embed_cached_ms": 0.0010000003385357559,
+      "retrieve_ms": 0.7704000017838553,
+      "retrieval_ms": 459.0925000011339,
+      "ttft_ms": 999.4169999990845,
+      "generate_ms": 1611.1300999982632,
+      "total_ms": 2070.222599999397,
+      "grounded": true,
+      "top_score": 0.8146882057189941,
+      "served_by": "Groq (primary)"
+    },
+    {
+      "query": "लिफ्ट का मतलब है",
+      "in_corpus": true,
+      "embed_ms": 448.4145999995235,
+      "embed_cached_ms": 0.0010000003385357559,
+      "retrieve_ms": 0.7587000000057742,
+      "retrieval_ms": 449.17329999952926,
+      "ttft_ms": 1065.608599998086,
+      "generate_ms": 1194.4401000000653,
+      "total_ms": 1643.6133999995945,
+      "grounded": true,
+      "top_score": 0.8130067586898804,
+      "served_by": "Groq (primary)"
+    },
+    {
+      "query": "क्या आप विस्तृत कटौती प्रपत्र पर राज्य के लिए भुगतान किए गए सी.पी.ए. शुल्क का दावा कर सकते हैं?",
+      "in_corpus": true,
+      "embed_ms": 433.77930000133347,
+      "embed_cached_ms": 0.0010000003385357559,
+      "retrieve_ms": 0.7267000000865664,
+      "retrieval_ms": 434.50600000142003,
+      "ttft_ms": 1481.6358999996737,
+      "generate_ms": 3081.9149000017205,
+      "total_ms": 3516.4209000031406,
+      "grounded": true,
+      "top_score": 0.7665609121322632,
+      "served_by": "Groq (primary)"
+    },
+    {
+      "query": "भारत की राजधानी क्या है?",
+      "in_corpus": false,
+      "embed_ms": 451.4526000020851,
+      "embed_cached_ms": 0.0011999982234556228,
+      "retrieve_ms": 0.8116999997582752,
+      "retrieval_ms": 452.26430000184337,
+      "ttft_ms": 802.5264000025345,
+      "generate_ms": 841.2248999993608,
+      "total_ms": 1293.4892000012042,
+      "grounded": true,
+      "top_score": 0.5987634658813477,
+      "served_by": "Groq (primary)"
+    },
+    {
+      "query": "पिज़्ज़ा कैसे बनाते हैं?",
+      "in_corpus": false,
+      "embed_ms": 469.42090000084136,
+      "embed_cached_ms": 0.0011000010999850929,
+      "retrieve_ms": 0.8095999983197544,
+      "retrieval_ms": 470.2304999991611,
+      "ttft_ms": 624.8588000016753,
+      "generate_ms": 725.3106999996817,
+      "total_ms": 1195.5411999988428,
+      "grounded": true,
+      "top_score": 0.6587486267089844,
+      "served_by": "Groq (primary)"
+    }
+  ]
+}

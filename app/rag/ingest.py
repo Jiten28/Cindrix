@@ -3,12 +3,13 @@
 import argparse
 import logging
 import time
+from collections import Counter
 from typing import List, Optional
 
 from app.ai.embeddings import embed_texts
 from app.config import settings
-from app.rag.chunking import Chunk, metadata_aware_chunks
-from app.rag.dataset import load_msmarco_xi
+from app.rag.chunking import Chunk, hybrid_chunks
+from app.rag.dataset import _PARQUET_STACK_AVAILABLE, load_msmarco_xi
 from app.rag.vector_store import VectorStore
 
 logger = logging.getLogger(__name__)
@@ -31,6 +32,7 @@ def ingest(
     split: Optional[str] = None,
     max_rows: Optional[int] = None,
     index_path: Optional[str] = None,
+    allow_fixture: bool = False,
 ) -> dict:
     """Run the full pipeline; return a stats dict."""
     language = language or settings.RAG_DATASET_LANGUAGE
@@ -38,13 +40,32 @@ def ingest(
     max_rows = max_rows if max_rows is not None else settings.RAG_INGEST_MAX_ROWS
     index_path = index_path or default_index_path(language)
 
+    # Without huggingface_hub/pyarrow, load_msmarco_xi yields the two-row
+    # documentation fixture. That builds a 5-vector "index" that loads and
+    # searches without error but answers almost nothing — a silent failure that
+    # is easy to mistake for a real build, so refuse it unless asked for.
+    if not _PARQUET_STACK_AVAILABLE and not allow_fixture:
+        raise RuntimeError(
+            "huggingface_hub/pyarrow aren't importable, so the dataset loader "
+            "would yield the 2-row documentation fixture instead of "
+            f"{settings.RAG_DATASET_NAME}. Refusing to overwrite "
+            f"{index_path} with a fixture-derived index. Run "
+            "`pip install -r requirements.txt` (check you're in the project "
+            "venv), or pass allow_fixture=True / --allow-fixture if a tiny "
+            "smoke-test index is genuinely what you want."
+        )
+
     all_chunks: List[Chunk] = []
     row_count = 0
     for row in load_msmarco_xi(language=language, split=split, max_rows=max_rows):
         row_count += 1
-        all_chunks.extend(metadata_aware_chunks(row))
+        all_chunks.extend(hybrid_chunks(row))
 
-    logger.info("[rag.ingest] %d rows -> %d passage-level chunks", row_count, len(all_chunks))
+    strategy_mix = Counter(c.strategy for c in all_chunks)
+    logger.info(
+        "[rag.ingest] %d rows -> %d chunks; strategy mix: %s",
+        row_count, len(all_chunks), dict(strategy_mix),
+    )
     if not all_chunks:
         logger.warning("[rag.ingest] no chunks produced — nothing to index")
         return {"rows": row_count, "chunks_produced": 0, "chunks_embedded": 0, "index_path": index_path}
@@ -77,6 +98,7 @@ def ingest(
         "chunks_produced": len(all_chunks),
         "chunks_embedded": len(valid),
         "chunks_skipped": skipped,
+        "strategy_mix": dict(strategy_mix),
         "index_path": index_path,
         "dim": dim,
     }
@@ -88,11 +110,18 @@ def main() -> None:
     parser.add_argument("--split", default=None, help=f"default: {settings.RAG_DATASET_SPLIT}")
     parser.add_argument("--max-rows", type=int, default=None, help=f"default: {settings.RAG_INGEST_MAX_ROWS}")
     parser.add_argument("--out", default=None, help="index path (without extension)")
+    parser.add_argument(
+        "--allow-fixture", action="store_true",
+        help="build from the 2-row documentation fixture when huggingface_hub/pyarrow are missing",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     start = time.time()
-    stats = ingest(language=args.language, split=args.split, max_rows=args.max_rows, index_path=args.out)
+    stats = ingest(
+        language=args.language, split=args.split, max_rows=args.max_rows,
+        index_path=args.out, allow_fixture=args.allow_fixture,
+    )
     elapsed = time.time() - start
     print(f"\nDone in {elapsed:.1f}s: {stats}")
 

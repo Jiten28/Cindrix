@@ -13,12 +13,22 @@ services:
         sync: false
       - key: GROQ_API_KEY
         sync: false
+      # Server-side speech-to-text. Without this the app falls back to the
+      # browser Web Speech API, which only works in Chrome/Edge.
+      - key: SARVAM_API_KEY
+        sync: false
       - key: FLASK_SECRET_KEY
         sync: false
       - key: TAVILY_API_KEY
         sync: false
       - key: ADMIN_EMAILS
         sync: false
+      - key: FLASK_DEBUG
+        value: "false"
+    # Persistent storage for mutable runtime state only: uploads, conversation
+    # history, users, analytics. The RAG index deliberately lives in rag_index/
+    # (baked into the image) — a disk mounted here starts empty on first deploy
+    # and would shadow anything the image shipped under this path.
     disk:
       name: cindrix-data
       mountPath: /app/data

@@ -9,9 +9,23 @@ from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.rag.chunking import fixed_size_chunks, metadata_aware_chunks, semantic_chunks
+from app.config import settings
+from app.rag.chunking import (
+    fixed_size_chunks,
+    hybrid_chunks,
+    metadata_aware_chunks,
+    semantic_chunks,
+)
 from app.rag.dataset import _shard_path, resolve_target_lang_code
-from app.rag.guardrails import check_grounding, is_offtopic_for_kb, is_unsafe
+from app.rag.guardrails import (
+    KB_ANSWER,
+    KB_DECLINE,
+    KB_FALLTHROUGH,
+    check_grounding,
+    is_offtopic_for_kb,
+    is_unsafe,
+    kb_decision,
+)
 from app.rag.vector_store import VectorStore
 
 # The dataset card's documented example row.
@@ -59,6 +73,21 @@ def test_semantic_chunks_never_splits_a_sentence():
         assert any(stripped in c.text for c in chunks), f"sentence fragment lost: {stripped!r}"
 
 
+def test_semantic_chunks_overlap_repeats_boundary_sentences():
+    prose = (
+        "Alpha one is here. Bravo two follows after it. Charlie three comes next in line. "
+        "Delta four then arrives. Echo five closes out the passage."
+    )
+    plain = semantic_chunks(prose, target_size=60, min_size=20)
+    overlapped = semantic_chunks(prose, target_size=60, min_size=20, overlap_sentences=1)
+    assert len(overlapped) >= 2
+    # Each chunk after the first restates the previous chunk's last sentence, so
+    # a fact spanning a boundary is retrievable from either side.
+    for prev, nxt in zip(overlapped, overlapped[1:]):
+        assert prev.text.split(". ")[-1].rstrip(".") in nxt.text
+    assert sum(len(c.text) for c in overlapped) > sum(len(c.text) for c in plain)
+
+
 def test_metadata_aware_chunks_preserves_is_selected_link():
     chunks = metadata_aware_chunks(_SAMPLE_ROW)
     assert len(chunks) == 3
@@ -77,6 +106,40 @@ def test_metadata_aware_chunks_skips_empty_passages():
     }
     chunks = metadata_aware_chunks(row)
     assert len(chunks) == 1
+
+
+def test_hybrid_chunks_routes_by_passage_length():
+    long_sentences = " ".join(f"Sentence number {i} carries enough words to matter here." for i in range(20))
+    unsplittable = "x" * 1500  # no sentence boundary anywhere
+    row = dict(_SAMPLE_ROW)
+    row["passages"] = {
+        "is_selected": [1, 0, 0],
+        "English_passages": ["A", "B", "C"],
+        "Translated_passages": ["a short self-contained passage", long_sentences, unsplittable],
+    }
+    chunks = hybrid_chunks(row)
+    strategies = {c.strategy for c in chunks}
+    # Short passage stays whole; long prose splits on sentences; a passage with
+    # no sentence boundary can only fall back to a fixed-size window.
+    assert strategies == {"metadata_aware", "semantic", "fixed_size"}
+    assert sum(1 for c in chunks if c.strategy == "metadata_aware") == 1
+
+
+def test_hybrid_chunks_sub_chunks_keep_dataset_metadata():
+    row = dict(_SAMPLE_ROW)
+    row["passages"] = {
+        "is_selected": [1],
+        "English_passages": ["A"],
+        "Translated_passages": [" ".join(f"Fact {i} lives in this passage body." for i in range(25))],
+    }
+    chunks = hybrid_chunks(row)
+    assert len(chunks) > 1
+    for c in chunks:
+        assert c.metadata["query_id"] == 1185869
+        assert c.metadata["is_selected"] is True
+        assert c.metadata["parent_strategy"] == "metadata_aware"
+        assert c.metadata["sub_chunk_count"] == len(chunks)
+    assert [c.metadata["sub_chunk_index"] for c in chunks] == list(range(len(chunks)))
 
 
 # --- vector store ---------------------------------------------------------
@@ -134,11 +197,37 @@ def test_is_offtopic_for_kb_skips_greetings_and_tool_intent():
     assert is_offtopic_for_kb("where is the taj mahal located", "general") is False
 
 
+def test_is_offtopic_for_kb_skips_self_and_user_meta_questions():
+    # A web-passage corpus can't answer these, but they score like a real match.
+    assert is_offtopic_for_kb("who created you", "general") is True
+    assert is_offtopic_for_kb("मेरा नाम क्या है?", "general") is True
+    assert is_offtopic_for_kb("Cindrix ऐप किसने बनाया?", "general") is True
+
+
 def test_check_grounding_respects_threshold():
     assert check_grounding([]) is False
     assert check_grounding([("passage", 0.8, {})]) is True
     assert check_grounding([("passage", 0.2, {})]) is False
     assert check_grounding([("passage", 0.5, {})], min_relevance=0.6) is False
+
+
+def test_kb_decision_separates_answer_decline_and_fallthrough():
+    # Bands calibrated against the built index: confident match, related-but-not
+    # confident (the case that would otherwise hallucinate), and off-corpus.
+    # Pinned here so a local .env override can't change what this asserts.
+    with patch.object(settings, "RAG_MIN_RELEVANCE", 0.75), \
+         patch.object(settings, "RAG_DECLINE_FLOOR", 0.62):
+        assert kb_decision([("passage", 0.81, {})]) == KB_ANSWER
+        assert kb_decision([("passage", 0.68, {})]) == KB_DECLINE
+        assert kb_decision([("passage", 0.58, {})]) == KB_FALLTHROUGH
+        assert kb_decision([]) == KB_FALLTHROUGH
+
+
+def test_kb_decision_defaults_are_calibrated_not_permissive():
+    # The shipped default has to sit above the measured out-of-domain ceiling
+    # (~0.72); a lower floor answers general questions from unrelated passages.
+    assert settings.RAG_MIN_RELEVANCE >= 0.72
+    assert settings.RAG_DECLINE_FLOOR < settings.RAG_MIN_RELEVANCE
 
 
 # --- retry / structured error recovery ------------------------------------

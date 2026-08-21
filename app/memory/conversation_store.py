@@ -98,6 +98,34 @@ def append_message(user_id: str, conv_id: str, role: str, content: str) -> Optio
     return conv
 
 
+def drop_last_assistant_message(user_id: str, conv_id: str) -> Optional[Dict]:
+    """Remove the trailing assistant reply, if the last message is one.
+
+    Regenerate re-answers the same user turn, so the reply being replaced has to
+    go — otherwise the conversation accumulates every discarded attempt. The
+    user turn itself is left alone (regenerate doesn't re-send it), and a
+    conversation not ending in an assistant message is returned untouched."""
+    conv = load_conversation(user_id, conv_id)
+    if conv is None:
+        return None
+    if not conv["messages"] or conv["messages"][-1]["role"] != "assistant":
+        return conv
+
+    conv["messages"].pop()
+    conv["updated_at"] = _now()
+    with open(_conv_path(user_id, conv_id), "w", encoding="utf-8") as f:
+        json.dump(conv, f, indent=2, ensure_ascii=False)
+
+    index = _load_index(user_id)
+    for entry in index:
+        if entry["id"] == conv_id:
+            entry["updated_at"] = conv["updated_at"]
+            entry["message_count"] = len(conv["messages"])
+            break
+    _save_index(user_id, index)
+    return conv
+
+
 def delete_conversation(user_id: str, conv_id: str) -> bool:
     path = _conv_path(user_id, conv_id)
     if os.path.exists(path):

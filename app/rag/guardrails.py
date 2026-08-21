@@ -22,6 +22,16 @@ _GREETING_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Questions about the user or the assistant itself. A web-passage corpus can
+# never hold the answer, but they still score in the same similarity range as a
+# real match, so they're routed away from retrieval before it runs.
+_META_RE = re.compile(
+    r"\b(?:who|what) (?:are|created|made|built|trained) you\b|"
+    r"\byour name\b|\bwho am i\b|\bmy name\b|"
+    r"मेरा नाम|आपका नाम|तुम्हारा नाम|तुम कौन हो|आप कौन ह|किसने बनाया",
+    re.IGNORECASE,
+)
+
 
 def is_unsafe(text: str) -> bool:
     """True if the input trips a hard-block pattern; caller should decline."""
@@ -37,6 +47,8 @@ def is_offtopic_for_kb(text: str, detected_tool: str) -> bool:
         return True
     if _GREETING_RE.match(stripped):
         return True
+    if _META_RE.search(stripped):
+        return True
     return False
 
 
@@ -50,6 +62,30 @@ def check_grounding(
     threshold = settings.RAG_MIN_RELEVANCE if min_relevance is None else min_relevance
     top_score = retrieved[0][1]
     return top_score >= threshold
+
+
+# Outcomes of kb_decision().
+KB_ANSWER = "answer"
+KB_DECLINE = "decline"
+KB_FALLTHROUGH = "fallthrough"
+
+
+def kb_decision(retrieved: List[Tuple[str, float, Dict]]) -> str:
+    """What to do with a knowledge-base search result.
+
+    KB_ANSWER      top hit clears RAG_MIN_RELEVANCE — answer from the excerpts.
+    KB_DECLINE     related material came back but nothing is a confident match.
+                   Answering from it is the hallucination this guards against,
+                   so the system says it doesn't know instead.
+    KB_FALLTHROUGH the corpus simply isn't about this question. Declining here
+                   would be wrong — it's a general question, not an unanswerable
+                   one — so it goes to the normal conversational path.
+    """
+    if check_grounding(retrieved):
+        return KB_ANSWER
+    if retrieved and retrieved[0][1] >= settings.RAG_DECLINE_FLOOR:
+        return KB_DECLINE
+    return KB_FALLTHROUGH
 
 
 UNSAFE_DECLINE_MESSAGE = (

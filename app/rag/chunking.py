@@ -52,12 +52,15 @@ def semantic_chunks(
     text: str,
     target_size: int = 800,
     min_size: int = 200,
+    overlap_sentences: int = 0,
     metadata: Dict[str, Any] | None = None,
 ) -> List[Chunk]:
     """Pack whole sentences into ~target_size chunks without splitting a sentence.
 
     A chunk still under min_size takes the next sentence anyway rather than
-    emit a too-small chunk."""
+    emit a too-small chunk. overlap_sentences > 0 repeats that many trailing
+    sentences at the start of the next chunk so a fact spanning a boundary
+    stays retrievable from either side."""
     text = text.strip()
     if not text:
         return []
@@ -84,8 +87,9 @@ def semantic_chunks(
                 strategy="semantic",
             ))
             index += 1
-        current = []
-        current_len = 0
+        carry = current[-overlap_sentences:] if overlap_sentences > 0 else []
+        current = list(carry)
+        current_len = sum(len(s) + 1 for s in carry)
 
     for sentence in sentences:
         projected = current_len + len(sentence) + 1
@@ -127,3 +131,59 @@ def metadata_aware_chunks(row: Dict[str, Any]) -> List[Chunk]:
             strategy="metadata_aware",
         ))
     return chunks
+
+
+# Passage-length routing thresholds for hybrid_chunks. Measured on the Hindi
+# train shard: median passage 297 chars, p90 528, so ~95% of passages pass
+# through whole and only the long tail gets sub-split.
+_SPLIT_THRESHOLD = 600
+_SUB_TARGET = 400
+_SUB_MIN = 150
+_SUB_OVERLAP_SENTENCES = 1
+_FIXED_FALLBACK_SIZE = 400
+_FIXED_FALLBACK_OVERLAP = 80
+
+
+def hybrid_chunks(
+    row: Dict[str, Any],
+    split_threshold: int = _SPLIT_THRESHOLD,
+) -> List[Chunk]:
+    """The indexing strategy: metadata-aware passage units, sub-split only when long.
+
+    A passage is already a self-contained retrieval unit, so short ones are
+    indexed whole with their dataset metadata. Passages over split_threshold
+    are split on sentence boundaries with one sentence of overlap. A long
+    passage with no sentence boundary at all (present in the corpus) can't be
+    split semantically, so it falls back to a fixed-size window with overlap.
+    """
+    out: List[Chunk] = []
+    for base in metadata_aware_chunks(row):
+        if len(base.text) <= split_threshold:
+            out.append(base)
+            continue
+
+        subs = semantic_chunks(
+            base.text,
+            target_size=_SUB_TARGET,
+            min_size=_SUB_MIN,
+            overlap_sentences=_SUB_OVERLAP_SENTENCES,
+            metadata=base.metadata,
+        )
+        if len(subs) <= 1:
+            subs = fixed_size_chunks(
+                base.text,
+                chunk_size=_FIXED_FALLBACK_SIZE,
+                overlap=_FIXED_FALLBACK_OVERLAP,
+                metadata=base.metadata,
+            )
+
+        for j, sub in enumerate(subs):
+            sub.metadata = {
+                **base.metadata,
+                **sub.metadata,
+                "parent_strategy": "metadata_aware",
+                "sub_chunk_index": j,
+                "sub_chunk_count": len(subs),
+            }
+            out.append(sub)
+    return out

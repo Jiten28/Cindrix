@@ -221,7 +221,10 @@ def stream_route_query(
         if kb_store is not None:
             query_vector = embed_query(user_input)
             retrieved = kb_store.search(query_vector, k=4) if query_vector else []
-            if guardrails.check_grounding(retrieved):
+            decision = guardrails.kb_decision(retrieved)
+            top_score = retrieved[0][1] if retrieved else 0.0
+
+            if decision == guardrails.KB_ANSWER:
                 context_block = "\n\n---\n\n".join(text for text, _score, _meta in retrieved)
                 prompt = (
                     f"You are Cindrix, a helpful, concise AI assistant.{name_context} "
@@ -234,11 +237,24 @@ def stream_route_query(
                 )
                 yield from stream_generation(prompt, model=model)
                 return
-            # Retrieval ran but nothing cleared the relevance floor — decline
-            # rather than answer from weak/irrelevant context.
-            logger.info("[router] knowledge-base retrieval below relevance floor for: %r", user_input[:80])
-            yield guardrails.DECLINE_MESSAGE
-            return
+
+            if decision == guardrails.KB_DECLINE:
+                logger.info(
+                    "[router] knowledge-base top score %.3f is below the "
+                    "relevance floor but above the decline floor — declining "
+                    "rather than answering from a weak match: %r",
+                    top_score, user_input[:80],
+                )
+                yield guardrails.DECLINE_MESSAGE
+                return
+
+            # KB_FALLTHROUGH — the corpus isn't about this. Drop the retrieved
+            # excerpts entirely so they can't leak into the answer, and let the
+            # normal conversational path handle it.
+            logger.info(
+                "[router] knowledge-base top score %.3f — corpus not relevant, "
+                "answering conversationally: %r", top_score, user_input[:80],
+            )
 
     context = recent_context(user_id, conversation_id)
     prompt = (
