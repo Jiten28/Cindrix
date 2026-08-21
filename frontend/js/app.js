@@ -380,14 +380,50 @@
       }
       list.forEach((conv) => {
         const li = document.createElement("li");
-        li.textContent = conv.title;
         li.dataset.id = conv.id;
+
+        const label = document.createElement("span");
+        label.className = "chat-list-title";
+        label.textContent = conv.title;
+        li.appendChild(label);
+
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "chat-list-delete";
+        del.textContent = "×";
+        del.title = "Delete conversation";
+        del.setAttribute("aria-label", `Delete conversation: ${conv.title}`);
+        del.addEventListener("click", (e) => {
+          // Without this the row's own click handler also fires and opens the
+          // conversation the user is trying to delete.
+          e.stopPropagation();
+          deleteConversation(conv.id, conv.title);
+        });
+        li.appendChild(del);
+
         li.addEventListener("click", () => loadConversationIntoView(conv.id));
         chatList.appendChild(li);
       });
       renderSidebarActive();
     } catch (err) {
       chatList.innerHTML = '<li class="chat-list-empty">Couldn\'t load conversations.</li>';
+    }
+  }
+
+  async function deleteConversation(convId, title) {
+    if (!window.confirm(`Delete "${title}"? This can't be undone.`)) return;
+    try {
+      const res = await fetch(`/api/conversations/${convId}`, { method: "DELETE" });
+      if (!res.ok) {
+        flashStateMessage("Couldn't delete that conversation", 2500);
+        return;
+      }
+      // Deleting the conversation on screen would otherwise leave the view
+      // showing messages that no longer exist server-side.
+      if (convId === currentConversationId) resetToLanding();
+      refreshConversationList();
+    } catch (err) {
+      flashStateMessage("Couldn't reach the server", 2500);
     }
   }
 
@@ -782,7 +818,21 @@
   let userPickedVoice = false;
   voiceSelect.addEventListener("change", () => {
     userPickedVoice = true;
+    persistDefaultVoice(voiceSelect.value);
   });
+
+  function persistDefaultVoice(voiceName) {
+    // Only logged-in users have a stored profile to save this to; guests keep
+    // their choice for the session only. Best-effort — a failed save just
+    // means the preference won't survive to the next session.
+    if (!currentUser || !voiceName) return;
+    currentUser.default_voice = voiceName;
+    fetch("/api/auth/me", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ default_voice: voiceName }),
+    }).catch(() => {});
+  }
 
   function loadVoices() {
     const previousSelection = voiceSelect.value;
@@ -796,17 +846,24 @@
       opt.textContent = `${v.name} (${v.lang})`;
       voiceSelect.appendChild(opt);
     });
-    // The browser can fire onvoiceschanged more than once, which used to
-    // silently reset the selection back to the first option every time —
-    // that's the "keeps switching back to the default voice" bug. Restore
-    // whatever was previously selected if it's still in the list.
-    const stillExists = Array.from(voiceSelect.options).some((o) => o.value === previousSelection);
-    if (previousSelection && stillExists) {
+
+    const isAvailable = (name) => !!name && Array.from(voiceSelect.options).some((o) => o.value === name);
+    const savedDefault = currentUser && currentUser.default_voice;
+
+    if (!userPickedVoice && isAvailable(savedDefault)) {
+      // A logged-in user's saved default wins over both the restore-previous
+      // logic and the neural-voice heuristic — but only until they override it
+      // this session (userPickedVoice), so a manual change is never undone.
+      voiceSelect.value = savedDefault;
+    } else if (isAvailable(previousSelection)) {
+      // The browser can fire onvoiceschanged more than once, which used to
+      // silently reset the selection back to the first option every time —
+      // that's the "keeps switching back to the default voice" bug. Restore
+      // whatever was previously selected if it's still in the list.
       voiceSelect.value = previousSelection;
     } else if (!userPickedVoice) {
-      // No prior selection to restore and the user hasn't manually chosen
-      // one yet — default to a Natural/Online neural voice if one exists,
-      // otherwise leave the browser's own default (first option) selected.
+      // No saved default and nothing to restore — default to a Natural/Online
+      // neural voice if one exists, otherwise leave the browser's own default.
       const preferred = pickPreferredVoiceName(availableVoices);
       if (preferred) voiceSelect.value = preferred;
     }
@@ -1418,6 +1475,10 @@
       currentUser = null;
     }
     document.getElementById("adminBtn").hidden = !(currentUser && currentUser.is_admin);
+    // The profile may carry a saved default voice. Voices often finish loading
+    // before auth resolves, so re-apply the selection now that currentUser is
+    // known — loadVoices() gives the saved default precedence when present.
+    if ("speechSynthesis" in window) loadVoices();
   }
 
   // ---------- profile modal ----------

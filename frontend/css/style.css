@@ -19,21 +19,35 @@
    by frontend/js/starfield.js's light-theme "bokeh motes" background.
    ============================================================ */
 :root {
-  --bg: #0A0A0C;
-  --card: #1A1620;
+  --bg: #08080B;
+  --card: #16121D;
   --card-border: rgba(255,255,255,.08);
   --accent: #9B6EF7;
   --glow: #F0A34E;
   --text: #F5F0FA;
   --text-secondary: rgba(245,240,250,.6);
 
-  --bg-rgb: 10,10,12;
-  --card-rgb: 26,22,32;
+  --bg-rgb: 8,8,11;
+  --card-rgb: 22,18,29;
   --text-rgb: 245,240,250;
   --star-rgb: 255,255,255;
   --accent-rgb: 155,110,247;
   --glow-rgb: 240,163,78;
 
+  /* Elevation system — a raised surface for hover/active states and a set of
+     shadow steps. Depth (not extra color) is what separates a premium surface
+     from a flat template one, so these are applied deliberately to the few
+     elements that should read as "lifted": the composer, menus, active rows. */
+  --surface-raised: rgba(255,255,255,.04);
+  --surface-hover: rgba(var(--text-rgb),.06);
+  --border-strong: rgba(255,255,255,.14);
+  --hairline-top: rgba(255,255,255,.06);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.35);
+  --shadow-md: 0 10px 30px -12px rgba(0,0,0,.6);
+  --shadow-lg: 0 24px 60px -16px rgba(0,0,0,.7);
+  --accent-soft: rgba(var(--accent-rgb),.14);
+
+  --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 20px;
   --radius-full: 999px;
@@ -67,6 +81,17 @@ html[data-theme="light"] {
   --star-rgb: 29,24,48;
   --accent-rgb: 116,64,224;
   --glow-rgb: 240,163,78;
+
+  /* Light-theme depth reads through darker, softer shadows and a darker
+     hairline rather than the white top-edge highlight used in dark mode. */
+  --surface-raised: rgba(255,255,255,.6);
+  --surface-hover: rgba(29,24,48,.05);
+  --border-strong: rgba(28,22,40,.2);
+  --hairline-top: rgba(255,255,255,.7);
+  --shadow-sm: 0 1px 2px rgba(76,55,120,.1);
+  --shadow-md: 0 10px 30px -12px rgba(76,55,120,.22);
+  --shadow-lg: 0 24px 60px -16px rgba(76,55,120,.28);
+  --accent-soft: rgba(var(--accent-rgb),.1);
 
   color-scheme: light;
 }
@@ -175,18 +200,27 @@ ul { list-style: none; margin: 0; padding: 0; }
   align-items: center;
   gap: 8px;
   justify-content: center;
-  padding: 10px 14px;
+  padding: 11px 14px;
   border-radius: var(--radius-md);
-  background: var(--accent);
-  color: var(--text);
+  /* A top-lit gradient (lighter at the top edge) gives the button a physical,
+     slightly convex read instead of a flat fill. */
+  background: linear-gradient(180deg, #A67DF9, var(--accent));
+  color: #fff;
   font-weight: 600;
   font-size: 14px;
-  transition: transform 0.15s var(--ease), box-shadow 0.15s var(--ease);
+  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255,255,255,.22);
+  transition: transform 0.15s var(--ease), box-shadow 0.15s var(--ease), filter 0.15s var(--ease);
 }
 
 .new-chat-btn:hover {
-  transform: scale(1.02);
-  box-shadow: 0 0 18px rgba(155, 110, 247, 0.35);
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+  box-shadow: var(--shadow-md), 0 0 20px rgba(155, 110, 247, 0.28), inset 0 1px 0 rgba(255,255,255,.22);
+}
+
+.new-chat-btn:active {
+  transform: translateY(0);
+  filter: brightness(0.98);
 }
 
 .sidebar-section {
@@ -222,6 +256,50 @@ ul { list-style: none; margin: 0; padding: 0; }
   text-overflow: ellipsis;
   transition: background 0.15s var(--ease), color 0.15s var(--ease);
   cursor: pointer;
+}
+
+.chat-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chat-list-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-list-delete {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+  /* Hidden until the row is hovered/focused so it doesn't clutter the list. */
+  opacity: 0;
+  transition: opacity 0.15s var(--ease), background 0.15s var(--ease), color 0.15s var(--ease);
+}
+
+.chat-list li:hover .chat-list-delete,
+.chat-list li.active .chat-list-delete,
+.chat-list-delete:focus-visible {
+  opacity: 0.7;
+}
+
+.chat-list-delete:hover,
+.chat-list-delete:focus-visible {
+  opacity: 1;
+  background: rgba(var(--text-rgb), 0.1);
+  color: var(--text);
 }
 
 .chat-list li:hover, .explore-list li:hover {
@@ -313,8 +391,10 @@ ul { list-style: none; margin: 0; padding: 0; }
   color: var(--text-secondary);
   font-size: 12px;
   border-radius: var(--radius-md);
-  padding: 5px 8px;
+  padding: 6px 9px;
   max-width: 140px;
+  box-shadow: inset 0 1px 0 var(--hairline-top);
+  transition: border-color 0.15s var(--ease), color 0.15s var(--ease);
   /* Truncate the selected option's text cleanly with an ellipsis instead
      of letting it silently clip at the box edge — matters most once this
      shrinks further on narrow viewports below. */
@@ -323,13 +403,33 @@ ul { list-style: none; margin: 0; padding: 0; }
   white-space: nowrap;
 }
 
+.voice-select:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.voice-select:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(155, 110, 247, 0.18);
+}
+
 .topbar-status {
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   font-size: 12.5px;
   color: var(--text-secondary);
+  /* Never wrap the model name to a second line — cap it and ellipsize. */
+  white-space: nowrap;
+  max-width: 160px;
+  overflow: hidden;
+}
+
+#modelName {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .status-dot {
@@ -413,19 +513,25 @@ ul { list-style: none; margin: 0; padding: 0; }
 }
 
 .landing-title {
-  margin: 0;
-  font-size: 26px;
-  font-weight: 600;
-  background: linear-gradient(135deg, var(--text) 40%, var(--accent));
+  margin: 8px 0 0;
+  /* Scales with the viewport so the hero stays the dominant element on a
+     laptop without overwhelming a phone. Tight tracking + heavy weight is the
+     typographic move that reads as premium here, more than the gradient does. */
+  font-size: clamp(30px, 4.4vw, 46px);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.08;
+  background: linear-gradient(120deg, var(--text) 55%, var(--accent) 92%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
 
 .landing-subtitle {
-  margin: 0 0 18px;
+  margin: 12px 0 26px;
   color: var(--text-secondary);
-  font-size: 14.5px;
+  font-size: 15px;
+  letter-spacing: 0.01em;
 }
 
 .suggestions {
@@ -437,19 +543,28 @@ ul { list-style: none; margin: 0; padding: 0; }
 }
 
 .chip {
-  padding: 8px 16px;
+  padding: 9px 17px;
   border-radius: var(--radius-full);
   background: var(--card);
   border: 1px solid var(--card-border);
   color: var(--text-secondary);
   font-size: 13px;
-  transition: border-color 0.15s var(--ease), color 0.15s var(--ease), transform 0.15s var(--ease);
+  font-weight: 500;
+  box-shadow: var(--shadow-sm), inset 0 1px 0 var(--hairline-top);
+  transition: border-color 0.18s var(--ease), color 0.18s var(--ease),
+    background 0.18s var(--ease), transform 0.18s var(--ease), box-shadow 0.18s var(--ease);
 }
 
 .chip:hover {
-  border-color: var(--accent);
+  border-color: var(--border-strong);
+  background: linear-gradient(var(--accent-soft), var(--accent-soft)), var(--card);
   color: var(--text);
-  transform: scale(1.03);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md), inset 0 1px 0 var(--hairline-top);
+}
+
+.chip:active {
+  transform: translateY(0);
 }
 
 /* ============================================================
@@ -506,9 +621,12 @@ ul { list-style: none; margin: 0; padding: 0; }
 }
 
 .msg-user {
-  background: linear-gradient(135deg, var(--accent), #4F46E5);
-  color: var(--text);
+  /* Kept within the violet family (was a stray indigo #4F46E5) so the accent
+     reads as one intentional brand color rather than two unrelated blues. */
+  background: linear-gradient(145deg, #A578F8, #7C4DE0);
+  color: #fff;
   border-bottom-right-radius: 6px;
+  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255,255,255,.14);
 }
 
 .msg-assistant {
@@ -516,6 +634,7 @@ ul { list-style: none; margin: 0; padding: 0; }
   border: 1px solid var(--card-border);
   color: var(--text);
   border-bottom-left-radius: 6px;
+  box-shadow: var(--shadow-sm), inset 0 1px 0 var(--hairline-top);
 }
 
 .msg-assistant.pending .typing-dots {
@@ -809,18 +928,19 @@ ul { list-style: none; margin: 0; padding: 0; }
   max-width: 720px;
   width: calc(100% - 40px);
   margin: 0 auto;
-  padding: 8px 8px 8px 16px;
+  padding: 8px 8px 8px 18px;
   border-radius: var(--radius-full);
-  background: rgba(var(--card-rgb), 0.75);
-  border: 1px solid var(--card-border);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  background: rgba(var(--card-rgb), 0.82);
+  border: 1px solid var(--border-strong);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: var(--shadow-md), inset 0 1px 0 var(--hairline-top);
   transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease);
 }
 
 .composer:focus-within {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(155, 110, 247, 0.15);
+  box-shadow: var(--shadow-lg), 0 0 0 3px rgba(155, 110, 247, 0.18), inset 0 1px 0 var(--hairline-top);
 }
 
 .composer-input {
@@ -850,13 +970,15 @@ ul { list-style: none; margin: 0; padding: 0; }
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-full);
-  background: var(--accent);
-  color: var(--text);
+  background: linear-gradient(180deg, #A67DF9, var(--accent));
+  color: #fff;
   font-size: 16px;
-  transition: transform 0.15s var(--ease);
+  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255,255,255,.22);
+  transition: transform 0.15s var(--ease), filter 0.15s var(--ease);
 }
 
-.composer-send:hover { transform: scale(1.06); }
+.composer-send:hover { transform: scale(1.06); filter: brightness(1.06); }
+.composer-send:active { transform: scale(1); }
 
 /* Mic states keep --glow (amber) — this is the one UI-chrome spot outside
    the sphere itself that's directly voice-related, so it stays paired

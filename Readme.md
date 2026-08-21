@@ -10,43 +10,51 @@ A voice-enabled RAG assistant with a particle-sphere visual identity.
 ## Pipeline
 
 Voice input → Sarvam speech-to-text → chunking + FAISS vector retrieval
-over the ai4bharat/MSMARCO-XI dataset → Groq-primary/Gemini-fallback
+over the ai4bharat/MSMARCO-XI dataset → Groq-primary / Gemini-fallback
 generation → guardrailed, grounded answer → spoken back via the browser's
 Web Speech API.
 
-## Hackathon compliance
+## How it works
 
-- **STT:** Sarvam (`saaras:v3`), swappable via `STT_PROVIDER` config —
-  the browser's native Web Speech API remains available as a dev fallback
-- **Chunking:** three real strategies — fixed-size with overlap, semantic/
-  sentence-packed, and metadata-aware — not a single naive approach
-- **Retrieval:** FAISS-backed vector store, numpy exact-search fallback
-- **Generation:** Groq (primary, `openai/gpt-oss-120b`) with automatic
-  fallback to Gemini if Groq's retry budget is exhausted; a clean
-  user-facing error if both fail — see `app/ai/retry.py`
-- **Guardrails:** off-topic screening, unsafe-input blocking, and a
-  grounding threshold — the system declines to answer rather than
-  guess when retrieved context doesn't support a claim
+- **Speech-to-text:** Sarvam (`saaras:v3`), selected automatically whenever
+  `SARVAM_API_KEY` is set and swappable via `STT_PROVIDER`. The browser's
+  native Web Speech API is the keyless fallback so a fresh clone has working
+  voice input with no account.
+- **Chunking:** four strategies rather than a single naive split —
+  fixed-size with overlap, semantic sentence-packing, metadata-aware passage
+  units, and a hybrid router that indexes short passages whole and sub-splits
+  only long ones (`app/rag/chunking.py`).
+- **Retrieval:** FAISS-backed vector store (`IndexFlatIP` over L2-normalized
+  vectors, so inner product is cosine), with a numpy exact-search fallback.
+  Embeddings are Gemini `gemini-embedding-001` (3072-dim), asymmetric between
+  document and query.
+- **Generation:** Groq (`openai/gpt-oss-120b`, primary) with automatic
+  fallback to Gemini if Groq's retry budget is exhausted, and a clean
+  user-facing error if both fail (`app/ai/retry.py`).
+- **Guardrails:** unsafe-input blocking, off-topic screening, and a
+  calibrated three-band grounding decision — the system answers strictly from
+  retrieved context, declines when the corpus is related but no match is
+  confident, or falls through to a conversational answer when the corpus
+  simply isn't about the question. It declines rather than guess.
 - **Latency:** `python -m app.rag.benchmark` reports real P50/P70/P100
-  timing per pipeline stage (embed → retrieve → generate). Measured
-  against the real index (2026-08-21): FAISS retrieval ~1 ms (P70
-  1.16 ms), Groq generation ~1 s (P70 1.08 s) — so end-to-end is
-  generation-bound. Retrieval sits three orders of magnitude under the
-  200 ms target; a full generated answer costs ~1 s of model time that no
-  index choice can shrink. Full table and caveats in `docs/Testing.md`
-  §17b
-- **Harness:** retries with transient-failure recovery, exhaustion
-  handling, and graceful mid-stream close around the generation path
+  timings per pipeline stage. The vector search itself is sub-millisecond
+  (P70 ~0.8 ms) — three orders of magnitude under the 200 ms retrieval
+  target. The measurable cost is the query-embedding network call (~0.47 s
+  P70) and answer generation (~1.6 s P70), so end-to-end latency is
+  generation-bound, not retrieval-bound. Full per-stage table in
+  [`docs/Testing.md`](docs/Testing.md).
+- **Harness:** per-provider retry with exponential backoff on transient
+  failures, provider fallback, retry-budget exhaustion handling, and graceful
+  mid-stream close around the generation path.
 
-## What's already working
+## Features
 
 - Conversational memory across a session
 - Live weather lookup (Open-Meteo — keyless, no signup; Gemini estimate
   fallback for places it can't geocode)
 - Live crypto price lookup (CoinGecko)
 - Web and image search
-- Voice input/output (Sarvam for hackathon compliance, browser Web
-  Speech API as dev fallback)
+- Voice input and output, with regenerate and per-conversation history
 - User auth, per-user history, admin panel
 - Analytics dashboard (message counts, tool usage, average latency)
 
@@ -62,7 +70,7 @@ Cindrix's visual presence is a sphere made of individual particles
 | Thinking  | Sphere rotates faster — the rotation itself reads as "processing" |
 | Speaking  | A ripple wave travels around the sphere in sync with audio        |
 
-Full spec in `docs/Design.md`.
+Full spec in [`docs/Design.md`](docs/Design.md).
 
 ## Tech stack
 
@@ -73,15 +81,13 @@ canvas rendering
 
 ## Project docs
 
-Developed with a six-file planning structure:
-
-- [`docs/PRD.md`](docs/PRD.md) — what's being built and why
+- [`docs/PRD.md`](docs/PRD.md) — product goals and scope
 - [`docs/Architecture.md`](docs/Architecture.md) — tech stack, data flow, RAG pipeline design
 - [`docs/Rules.md`](docs/Rules.md) — coding boundaries and conventions
-- [`docs/Phases.md`](docs/Phases.md) — the build roadmap
+- [`docs/Phases.md`](docs/Phases.md) — capability overview and delivery history
 - [`docs/Design.md`](docs/Design.md) — visual identity, colors, animation spec
-- [`docs/Memory.md`](docs/Memory.md) — living development log
-- [`docs/Testing.md`](docs/Testing.md) — test coverage and real-environment verification status
+- [`docs/Memory.md`](docs/Memory.md) — technical decisions and project history
+- [`docs/Testing.md`](docs/Testing.md) — test coverage and verified latency numbers
 
 ## Setup
 
@@ -102,12 +108,12 @@ Ingest the knowledge base once before running the RAG path:
 python -m app.rag.ingest
 ```
 
-> **Free-tier note:** Gemini's free embedding tier has a hard cap of
-> **1000 requests/day** (plus a ~100/min limit), each text in a batch
-> counting individually. The default ingest (`RAG_INGEST_MAX_ROWS=100` →
-> ~1000 passage chunks) sits right at that daily ceiling — effectively one
-> full ingest per day per key. The run logs any chunks it couldn't embed
-> and saves an honest partial index rather than silently dropping them.
+> **Free-tier note:** Gemini's free embedding tier is rate-limited
+> (~100 requests/min, ~1000/day), each text in a batch counting
+> individually. The default ingest (`RAG_INGEST_MAX_ROWS=75` → ~868 passage
+> chunks) fits within the daily cap in a single run. The run logs any chunks
+> it couldn't embed and saves an honest partial index rather than silently
+> dropping them.
 
 Run:
 
