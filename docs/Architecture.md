@@ -124,7 +124,7 @@ Cindrix/
 ├── rag_index/                   # built knowledge-base index — committed, ships in the image
 ├── data/                        # gitignored runtime state (see Storage layout above)
 ├── tests/test_health.py, test_rag.py
-├── .github/workflows/ci.yml     # compile check + pytest + frontend JS syntax check
+├── .github/workflows/ci.yml     # tests + a real image build that asserts the index loads
 ├── Dockerfile, docker-compose.yml, .dockerignore
 ├── render.yaml                  # Render blueprint
 ├── .env.example
@@ -674,8 +674,13 @@ Two things the report is explicit about (`rag_index/latency_report.json`):
   lives in `rag_index/`, deliberately outside `data/`, because a disk mounted
   at that path starts empty on first deploy and would shadow anything the
   image shipped there.
-- **CI** — `.github/workflows/ci.yml` runs a compile check, the pytest suite,
-  and a frontend JS syntax check on every push and pull request.
+- **CI** — `.github/workflows/ci.yml` runs two jobs on every push and pull
+  request. `test` does a compile check, the pytest suite, and a frontend JS
+  syntax check. `docker` builds the production image, boots it, and asserts
+  `/api/config` reports the knowledge-base index as loaded. The second job
+  exists because the first can't catch container-only failures: the runner
+  has the OpenMP runtime faiss needs, so a `python:*-slim` image missing it
+  passes every test and still can't retrieve.
 - **Cold starts** — Render's free plan spins the instance down when idle, so
   the first request after a quiet period takes ~25 s. This is a plan
   characteristic, not an application one.

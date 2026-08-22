@@ -35,3 +35,39 @@ jobs:
           for f in frontend/js/*.js; do
             node --check "$f"
           done
+
+  # The test job runs on ubuntu-latest, which already has the OpenMP runtime
+  # faiss's wheel needs — so it cannot catch a container that lacks it. That
+  # exact gap let a build pass while `import faiss` failed at runtime and
+  # knowledge-base retrieval was silently off in production. Building the real
+  # image is what closes it: the Dockerfile asserts faiss imports and the
+  # shipped index loads, so those become build failures here rather than a
+  # deploy that looks healthy.
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the production image
+        run: docker build -t cindrix:ci .
+
+      - name: Boot the image and check its self-report
+        run: |
+          docker run -d --name cindrix-ci -p 5000:5000 -e PORT=5000 cindrix:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:5000/health > /dev/null; then break; fi
+            sleep 2
+          done
+          curl -fsS http://localhost:5000/health
+          echo
+          # /api/config reports what the container actually resolved. A
+          # knowledgeBase.loaded of false here means the index didn't load in
+          # the image, which is the failure this job exists to catch.
+          config=$(curl -fsS http://localhost:5000/api/config)
+          echo "$config"
+          echo "$config" | grep -q '"loaded": *true' \
+            || { echo "::error::knowledge-base index did not load in the image"; docker logs cindrix-ci; exit 1; }
+
+      - name: Container logs
+        if: always()
+        run: docker logs cindrix-ci || true
