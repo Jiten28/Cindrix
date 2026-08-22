@@ -10,8 +10,8 @@ on having a real account.
 
 1. `.env` has a real `GOOGLE_API_KEY` (required for anything to respond)
    and `GROQ_API_KEY` (primary generation provider — Gemini is the fallback)
-2. Optional but worth having for full coverage: `TAVILY_API_KEY` (image
-   search), `ADMIN_EMAILS` (set to your own email if you want to test
+2. Optional but worth having for full coverage: `TAVILY_API_KEY` (web and
+   image search), `ADMIN_EMAILS` (set to your own email if you want to test
    admin without relying on "first account created"). Weather needs **no**
    key — it uses Open-Meteo (keyless); there is no `OPENWEATHER_API_KEY`
    anymore.
@@ -83,9 +83,9 @@ on having a real account.
       can't resolve the city. Also try city-first ("Hyderabad weather") and
       Hindi ("दिल्ली का मौसम") phrasing — all should route to the weather tool
 - [ ] Ask "price of bitcoin" — real live price from CoinGecko
-- [ ] Ask "search for <topic>" — real results via Gemini's Google Search
-      grounding (needs only `GOOGLE_API_KEY`), otherwise a graceful
-      "search isn't configured" message
+- [ ] Ask "search for <topic>" — real results if `TAVILY_API_KEY` is set,
+      otherwise a graceful "No search results found (or search isn't
+      configured)" message
 - [ ] With a document or image attached (see §6), ask a weather question —
       confirm weather still answers correctly rather than the attachment
       hijacking the reply (tool intent should always win over an attachment)

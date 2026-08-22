@@ -168,8 +168,10 @@ code paths serve both signed-in and anonymous sessions.
 - **Open-Meteo** — keyless geocoding + forecast REST APIs, with a model
   best-effort estimate as fallback for places it can't geocode
 - **CoinGecko** — keyless crypto price lookup
-- **Tavily** — image search; general web search goes through Gemini's Google
-  Search grounding
+- **Tavily** — both general web search and image search (`app/tools/search.py`).
+  Search results are fetched as structured JSON and passed to the generation
+  chain as context, so the answer is written by Groq/Gemini over real sources
+  rather than by a provider-side grounding tool.
 - **HuggingFace Hub** — downloads the MSMARCO-XI parquet shard at ingest time
 - **Attachment RAG** — file upload → parse (PDF/DOCX/TXT) → chunk → embed →
   store in `data/embeddings/` → retrieve on query

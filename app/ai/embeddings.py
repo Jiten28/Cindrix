@@ -1,5 +1,6 @@
 """Text embeddings via Gemini."""
 
+import logging
 import math
 import re
 import time
@@ -11,6 +12,8 @@ from google.genai import types
 
 from app.config import settings
 from app.rag.vector_store import VectorStore
+
+logger = logging.getLogger(__name__)
 
 _client = None
 
@@ -68,10 +71,13 @@ def embed_texts(
             if rate_limited and attempt < max_retries:
                 attempt += 1
                 delay = _retry_delay_seconds(msg, _EMBED_RETRY_DEFAULT_DELAY)
-                print(f"[embeddings] rate-limited (429); retry {attempt}/{max_retries} in {delay:.0f}s")
+                logger.warning(
+                    "[embeddings] rate-limited (429); retry %d/%d in %.0fs",
+                    attempt, max_retries, delay,
+                )
                 time.sleep(delay)
                 continue
-            print(f"[embeddings] error: {e}")
+            logger.error("[embeddings] embed_content failed (%d text(s)): %s", len(texts), e)
             return [[] for _ in texts]
 
 

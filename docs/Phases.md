@@ -35,8 +35,10 @@ Cindrix can look things up live and reason over uploaded content.
 - **Weather:** keyless Open-Meteo lookup (geocoding + forecast, WMO code to
   text), with a Gemini estimate fallback for places it cannot geocode.
 - **Crypto:** live price lookup via CoinGecko.
-- **Search:** general web search (through Gemini's Google Search grounding) and
-  image search (via Tavily).
+- **Search:** general web search and image search, both via Tavily. Results
+  are passed to the generation chain as context rather than answered by a
+  provider-side grounding tool, so the same Groq-primary/Gemini-fallback path
+  handles them.
 - **Documents:** PDF, TXT, and DOCX upload with text extraction
   (`app/tools/documents.py`), chunked and embedded for retrieval so the user can
   ask questions about a specific uploaded file. Uploads made before a

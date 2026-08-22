@@ -75,27 +75,6 @@ def stream_gemini(prompt: str, model: Optional[str] = None) -> Generator[str, No
         yield f"(Gemini error: {e})"
 
 
-def stream_gemini_search(prompt: str, model: Optional[str] = None) -> Generator[str, None, None]:
-    """Streaming call using Gemini's built-in Google Search grounding tool.
-    Uses the same GOOGLE_API_KEY as chat — no separate Custom Search API needed."""
-    if not settings.GOOGLE_API_KEY:
-        yield "Gemini is not configured (missing GOOGLE_API_KEY)."
-        return
-    try:
-        grounding_tool = types.Tool(google_search=types.GoogleSearch())
-        config = types.GenerateContentConfig(tools=[grounding_tool])
-        stream = _get_client().models.generate_content_stream(
-            model=_resolve_model(model),
-            contents=prompt,
-            config=config,
-        )
-        for chunk in stream:
-            if chunk.text:
-                yield chunk.text
-    except Exception as e:
-        yield f"(Gemini error: {e})"
-
-
 def stream_gemini_vision(prompt: str, image_bytes: bytes, mime_type: str, model: Optional[str] = None) -> Generator[str, None, None]:
     """Streaming call with an image attached. Also covers OCR — Gemini reads
     text embedded in images natively, so no separate OCR library."""

@@ -1,17 +1,21 @@
 """Web and image search via Tavily."""
 
+import logging
 from typing import List, Optional
 
 import requests
 
 from app.config import settings
 
+logger = logging.getLogger(__name__)
+
 _SEARCH_URL = "https://api.tavily.com/search"
+_MAX_LOGGED_BODY_CHARS = 500  # error bodies can be long; the first lines carry the reason
 
 
 def _tavily_request(query: str, num: int, include_images: bool) -> Optional[dict]:
     if not settings.TAVILY_API_KEY:
-        print("[search] TAVILY_API_KEY not set")
+        logger.warning("[search] TAVILY_API_KEY not set — search is unavailable")
         return None
     try:
         payload = {
@@ -30,11 +34,11 @@ def _tavily_request(query: str, num: int, include_images: bool) -> Optional[dict
         r.raise_for_status()
         return r.json()
     except requests.exceptions.HTTPError as e:
-        body = e.response.text if e.response else "(no body)"
-        print(f"[search] HTTP error: {e}\nResponse body: {body}")
+        body = e.response.text[:_MAX_LOGGED_BODY_CHARS] if e.response is not None else "(no body)"
+        logger.error("[search] HTTP error: %s | response body: %s", e, body)
         return None
     except Exception as e:
-        print(f"[search] unexpected error: {e}")
+        logger.error("[search] request failed: %s", e)
         return None
 
 
@@ -45,7 +49,7 @@ def web_search(query: str, num: int = 5) -> List[dict]:
         return []
     results = js.get("results", [])
     if not results:
-        print(f"[search] query succeeded but returned 0 results for: {query!r}")
+        logger.info("[search] query succeeded but returned 0 results for: %r", query)
     return [
         {"title": r.get("title", ""), "link": r.get("url", ""), "snippet": r.get("content", "")}
         for r in results
@@ -59,7 +63,7 @@ def image_search(query: str, num: int = 5) -> List[dict]:
         return []
     images = js.get("images", [])
     if not images:
-        print(f"[search] image query succeeded but returned 0 images for: {query!r}")
+        logger.info("[search] image query succeeded but returned 0 images for: %r", query)
     return [
         {"title": img.get("description", "") or query, "link": img.get("url", ""), "snippet": ""}
         for img in images
