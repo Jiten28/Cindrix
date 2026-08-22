@@ -31,10 +31,22 @@ from app.rag import guardrails
 logger = logging.getLogger(__name__)
 
 # Queries with no answer in the corpus. They must return 0 grounded hits —
-# that's the guardrail working, and it's part of what this measures.
+# that's the guardrail working, and it's part of what this measures. They double
+# as the negative class the RAG_MIN_RELEVANCE band is calibrated against, so the
+# set is deliberately varied: general knowledge, how-to, current-value lookups,
+# entertainment, sport, and programming, in Hindi and English shapes. A single
+# out-of-corpus query can't tell you where the non-match ceiling is.
 OUT_OF_CORPUS_QUERIES = [
     "भारत की राजधानी क्या है?",
     "पिज़्ज़ा कैसे बनाते हैं?",
+    "क्रिकेट में सचिन तेंदुलकर के कुल रन कितने हैं?",
+    "बॉलीवुड की सबसे महंगी फिल्म कौन सी है?",
+    "मेरे लैपटॉप की बैटरी जल्दी खत्म हो जाती है, क्या करूं?",
+    "क्वांटम कंप्यूटिंग क्या है?",
+    "दिल्ली से मुंबई की ट्रेन का किराया कितना है?",
+    "आज का सोने का भाव क्या है?",
+    "ताजमहल किसने बनवाया था?",
+    "पाइथन में लिस्ट को कैसे सॉर्ट करें?",
 ]
 
 # How many in-corpus queries to draw from the index when none are given.
@@ -186,6 +198,38 @@ def run_benchmark(
             served_by_counts[t.served_by] = served_by_counts.get(t.served_by, 0) + 1
 
     expected_grounded = sum(1 for t in timings if t.in_corpus)
+
+    # Keys can be set and the embedding call still fail — an exhausted daily
+    # quota returns 429 and embed_query fails fast to an empty vector. Against a
+    # loaded index a real search always returns k hits, so a missing top_score
+    # means the query never got embedded. Every stage after it then measures a
+    # no-op, and retrieval_ms looks *better* than a working run because there was
+    # no network round trip in it. Counting the failures is what stops a dead run
+    # from reporting a passing latency.
+    embed_failures = sum(1 for t in timings if t.top_score is None)
+    all_embeds_failed = bool(timings) and embed_failures == len(timings)
+
+    # Separation between the two classes — the number the relevance band is
+    # calibrated on. A false positive here (an out-of-corpus query scoring above
+    # the threshold) would mean the guardrail can be talked into grounding an
+    # answer in unrelated passages, which is the failure mode it exists to stop.
+    in_scores = [t.top_score for t in timings if t.in_corpus and t.top_score is not None]
+    out_scores = [t.top_score for t in timings if not t.in_corpus and t.top_score is not None]
+    false_positives = [s for s in out_scores if s >= settings.RAG_MIN_RELEVANCE]
+
+    # A provider fallback costs the primary's whole retry budget before the
+    # secondary even starts, so one fallback dominates the generation tail. Say so
+    # rather than leaving a 30s P100 to look like normal inference latency.
+    slowest_grounded = max(grounded, key=lambda t: t.generate_ms) if grounded else None
+    tail_note = None
+    if slowest_grounded and slowest_grounded.served_by and "fallback" in slowest_grounded.served_by:
+        tail_note = (
+            f"The generation/end-to-end P100 is one query that fell back to "
+            f"{slowest_grounded.served_by}: the primary's retry budget elapsed "
+            f"before the secondary was called. That's the harness recovering "
+            f"rather than a representative inference time — see per_query."
+        )
+
     return {
         "retrieval_target_ms": 200,
         "is_self_test": is_self_test,
@@ -211,6 +255,16 @@ def run_benchmark(
         ),
         "index_chunks": index_size,
         "query_count": len(timings),
+        "embed_failure_count": embed_failures,
+        "embed_failure_note": (
+            f"{embed_failures} of {len(timings)} queries could not be embedded — "
+            f"embed_query returned an empty vector, so retrieval and generation "
+            f"never ran for them. The usual cause is the Gemini free-tier daily "
+            f"embedding quota (1000 requests/day/model); check the log for a 429. "
+            f"Latency figures from those queries measure a failed call, not the "
+            f"pipeline, and any that made it into the percentiles bias them low."
+            if embed_failures else None
+        ),
         "grounded_count": len(grounded),
         "expected_grounded_count": expected_grounded,
         "grounding_note": (
@@ -220,6 +274,24 @@ def run_benchmark(
             f"expected to ground 0 times (the guardrail declining, not a miss)."
         ),
         "served_by_breakdown": served_by_counts,
+        "generation_tail_note": tail_note,
+        "calibration": {
+            "min_relevance": settings.RAG_MIN_RELEVANCE,
+            "decline_floor": settings.RAG_DECLINE_FLOOR,
+            "in_corpus_score_range": [min(in_scores), max(in_scores)] if in_scores else None,
+            "out_of_corpus_score_range": [min(out_scores), max(out_scores)] if out_scores else None,
+            "highest_out_of_corpus_score": max(out_scores) if out_scores else None,
+            "margin_above_highest_non_match": (
+                round(settings.RAG_MIN_RELEVANCE - max(out_scores), 4) if out_scores else None
+            ),
+            "false_positives": len(false_positives),
+            "note": (
+                f"{len(false_positives)} of {len(out_scores)} out-of-corpus queries "
+                f"scored at or above RAG_MIN_RELEVANCE={settings.RAG_MIN_RELEVANCE}. "
+                f"Zero is the requirement: an out-of-corpus query must never reach "
+                f"the grounded-answer path."
+            ),
+        },
         "statistical_note": (
             f"Nearest-rank percentiles over {len(timings)} distinct test queries "
             f"({expected_grounded} drawn from the index, "
@@ -238,7 +310,9 @@ def run_benchmark(
         },
         "retrieval_ms": {"p50": percentile(retrievals, 50), "p70": p70_retrieval, "p100": percentile(retrievals, 100)},
         "end_to_end_ms": {"p50": percentile(totals, 50), "p70": percentile(totals, 70), "p100": percentile(totals, 100)},
-        "retrieval_meets_target": (not is_self_test) and p70_retrieval <= 200,
+        "retrieval_meets_target": (
+            (not is_self_test) and (not all_embeds_failed) and p70_retrieval <= 200
+        ),
         "end_to_end_note": (
             "end_to_end_ms covers a complete generated answer and is dominated "
             "by LLM inference, so it is not compared against the 200ms "
@@ -291,9 +365,40 @@ def main() -> None:
     if report["index_chunks"] == 0:
         print("\n⚠️  No knowledge-base index loaded — run `python -m app.rag.ingest` first.")
         return
+    if report["embed_failure_note"]:
+        print(f"\n⚠️  {report['embed_failure_note']}")
+        if report["embed_failure_count"] == report["query_count"]:
+            print(
+                "\n❌ EVERY query failed to embed, so this run measured nothing. "
+                "The numbers below are the cost of a failed API call, not of the "
+                "pipeline — do not report them. Re-run once the quota resets."
+            )
+            return
     if report["served_by_breakdown"]:
         print("\nProvider breakdown:", report["served_by_breakdown"])
+    if report["generation_tail_note"]:
+        print(f"\nNote: {report['generation_tail_note']}")
     print(f"\nGrounding: {report['grounding_note']}")
+
+    cal = report["calibration"]
+    if cal["out_of_corpus_score_range"]:
+        lo, hi = cal["out_of_corpus_score_range"]
+        in_lo, in_hi = cal["in_corpus_score_range"]
+        print(
+            f"\nCalibration: in-corpus top scores {in_lo:.3f}-{in_hi:.3f}, "
+            f"out-of-corpus {lo:.3f}-{hi:.3f}."
+        )
+        if cal["false_positives"]:
+            print(
+                f"   ❌ {cal['false_positives']} out-of-corpus query/queries scored "
+                f">= RAG_MIN_RELEVANCE={cal['min_relevance']} — raise the threshold."
+            )
+        else:
+            print(
+                f"   ✅ no out-of-corpus query reached RAG_MIN_RELEVANCE="
+                f"{cal['min_relevance']} ({cal['margin_above_highest_non_match']} margin "
+                f"above the highest non-match)."
+            )
 
     p70_retrieval = report["retrieval_ms"]["p70"]
     if report["retrieval_meets_target"]:

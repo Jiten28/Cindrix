@@ -283,10 +283,17 @@ def test_kb_decision_separates_answer_decline_and_fallthrough():
 
 
 def test_kb_decision_defaults_are_calibrated_not_permissive():
-    # The shipped default has to sit above the measured out-of-domain ceiling
-    # (~0.72); a lower floor answers general questions from unrelated passages.
-    assert settings.RAG_MIN_RELEVANCE >= 0.72
+    # The shipped default is bounded on both sides by what `python -m
+    # app.rag.benchmark` measures against the built index. Below the lower bound
+    # it starts answering general questions from unrelated passages (the highest
+    # of 10 out-of-corpus probes scored 0.659). Above the upper bound it rejects
+    # the true-match cluster that sits just under 0.75, which is how a corpus
+    # question ends up declined even though its answer is indexed.
+    assert 0.70 <= settings.RAG_MIN_RELEVANCE <= 0.78
     assert settings.RAG_DECLINE_FLOOR < settings.RAG_MIN_RELEVANCE
+    # The decline band has to be narrow. A wide one turns "the corpus isn't about
+    # this" into a refusal, which is the wrong answer to a general question.
+    assert settings.RAG_MIN_RELEVANCE - settings.RAG_DECLINE_FLOOR <= 0.08
 
 
 # --- retry / structured error recovery ------------------------------------

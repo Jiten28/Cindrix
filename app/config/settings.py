@@ -49,10 +49,13 @@ RAG_INDEX_DIR: str = os.getenv("RAG_INDEX_DIR", "rag_index").strip()
 # were calibrated against the built index rather than guessed — see
 # docs/Architecture.md. gemini-embedding-001 compresses same-language
 # similarity into a narrow range, so a single floor can't separate "this is in
-# the corpus" from "this merely looks like it": measured true matches landed at
-# 0.65-0.82, out-of-domain Hindi queries at 0.60-0.72, out-of-domain English at
-# 0.57-0.60. The decline band is therefore deliberately narrow — it covers the
-# genuinely ambiguous overlap, not everything that fails to ground.
+# the corpus" from "this merely looks like it". Measured over the shipped
+# 868-chunk index by `python -m app.rag.benchmark`: 28 in-corpus queries scored
+# 0.65-0.83, and 10 out-of-corpus queries (Hindi and English, general knowledge,
+# how-to, current-value lookups) topped out at 0.659 — so 0.75 clears every
+# observed non-match by 0.09. The decline band below it is deliberately narrow:
+# it covers the genuinely ambiguous overlap, not everything that fails to ground,
+# because declining a general question is worse than answering it conversationally.
 #
 #   >= RAG_MIN_RELEVANCE   answer strictly from the retrieved excerpts
 #   >= RAG_DECLINE_FLOOR   related material, no confident match -> decline
