@@ -636,6 +636,20 @@ Two things the report is explicit about (`rag_index/latency_report.json`):
   falls back to `webspeech`; no `GOOGLE_API_KEY` skips knowledge-base
   retrieval). Both cases log a warning — check `/api/config` and the host
   logs rather than assuming the deploy is complete.
+- **Deployment self-check** — `GET /api/config` is the one endpoint that
+  reports what a running instance actually resolved, not what the repo
+  declares:
+
+  ```json
+  { "sttProvider": "sarvam", "knowledgeBase": { "loaded": true, "chunks": 868 } }
+  ```
+
+  `sttProvider: "webspeech"` means `SARVAM_API_KEY` never reached the host.
+  `"loaded": false` means the index couldn't be read in the container, which
+  separates a load failure from an embedding failure — if the index is loaded
+  and grounded answers still don't appear, the problem is `embed_query`, not
+  the index. Both failures are otherwise invisible: the app keeps answering,
+  just conversationally.
 - **Persistent disk** — mounted at `/app/data` for mutable runtime state
   (uploads, conversations, users, analytics). The read-only vector index
   lives in `rag_index/`, deliberately outside `data/`, because a disk mounted

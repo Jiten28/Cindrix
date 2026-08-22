@@ -1053,7 +1053,7 @@
     window.CindrixVoice = { startListening: startListeningWebSpeech, stopVoiceChat: stopVoiceChatWebSpeech };
   }
 
-  // ===== Provider B: Sarvam (server-side, hackathon-compliant) =====
+  // ===== Provider B: Sarvam (server-side, the real STT provider) =====
   // No SpeechRecognition API involved at all — records raw audio via
   // MediaRecorder, detects when the user has stopped talking with a small
   // Web Audio volume analyser (WebSpeech gets this "for free" from the
@@ -1222,9 +1222,9 @@
     window.CindrixVoice = { startListening: startSarvamRecording, stopVoiceChat: stopVoiceChatSarvam };
   }
 
-  // Resolve which provider to wire up. Defaults to Web Speech (matches
-  // pre-hackathon behavior exactly) if /api/config can't be reached at
-  // all, e.g. backend not running yet during frontend-only dev.
+  // Resolve which provider to wire up. Falls back to Web Speech if
+  // /api/config can't be reached at all, e.g. backend not running yet during
+  // frontend-only dev.
   voiceProviderReady = fetch("/api/config")
     .then((res) => res.json())
     .then((data) => { sttProvider = data.sttProvider || "webspeech"; })

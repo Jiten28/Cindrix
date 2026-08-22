@@ -15,7 +15,7 @@ import uuid
 from flask import Blueprint, Response, jsonify, request, send_file, stream_with_context
 from werkzeug.utils import secure_filename
 
-from app.agents.router import detect_tool, stream_route_query
+from app.agents.router import detect_tool, get_kb_store, stream_route_query
 from app.ai.embeddings import embed_texts
 from app.ai.stt import transcribe_audio
 from app.analytics import events
@@ -50,9 +50,21 @@ def models():
 
 @bp.route("/config", methods=["GET"])
 def config():
-    """Which STT provider is live, so app.js picks the Web Speech path or the
-    Sarvam POST path. Never exposes the API key — only the provider name."""
-    return jsonify({"sttProvider": settings.STT_PROVIDER})
+    """What's actually live in this process: the STT provider (so app.js picks
+    the Web Speech path or the Sarvam POST path) and whether the knowledge-base
+    index loaded. Both are deployment facts that differ between a local run and
+    a container, and both fail silently — an unset SARVAM_API_KEY quietly
+    downgrades voice input, and an index that can't load quietly turns every
+    grounded answer conversational. Never exposes an API key, only names and
+    counts."""
+    kb_store = get_kb_store()
+    return jsonify({
+        "sttProvider": settings.STT_PROVIDER,
+        "knowledgeBase": {
+            "loaded": kb_store is not None,
+            "chunks": len(kb_store) if kb_store is not None else 0,
+        },
+    })
 
 
 @bp.route("/stt", methods=["POST"])

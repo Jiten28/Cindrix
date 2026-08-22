@@ -40,3 +40,29 @@ def test_chat_requires_a_message():
     client = app.test_client()
     resp = client.post("/api/chat", json={})
     assert resp.status_code == 400
+
+
+def test_config_reports_stt_provider_and_knowledge_base_state():
+    """The deployment-diagnostic endpoint. Both fields must always be present —
+    they're how a deployed instance is checked for a silently-unset
+    SARVAM_API_KEY or an index that didn't load."""
+    app = create_app()
+    client = app.test_client()
+    resp = client.get("/api/config")
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["sttProvider"] in {"sarvam", "webspeech"}
+    kb = body["knowledgeBase"]
+    assert isinstance(kb["loaded"], bool)
+    assert isinstance(kb["chunks"], int)
+    # Consistency, whichever environment this runs in: an index that didn't
+    # load must report zero chunks, and a loaded one must report some.
+    assert kb["loaded"] == (kb["chunks"] > 0)
+
+
+def test_config_never_leaks_api_keys():
+    app = create_app()
+    resp = app.test_client().get("/api/config")
+    body = resp.get_data(as_text=True).lower()
+    for secret in ("api_key", "apikey", "sk-", "subscription"):
+        assert secret not in body

@@ -395,18 +395,25 @@ back via the Gemini fallback and the log records why Groq was skipped.
 - Cold start on Render's free tier is ~25 s for the first request after
   idle; subsequent requests are normal. This is a free-plan characteristic,
   not an application one.
-- `/api/config` reports the STT provider actually in use — check this before
-  any demo, because it reflects whether `SARVAM_API_KEY` reached the host's
-  environment. `render.yaml` declares the key `sync: false`, so it must be
-  filled in manually in the Render dashboard; if it is absent the app
+- `/api/config` reports what the running instance actually resolved — check
+  this before any demo. It returns
+  `{"sttProvider": ..., "knowledgeBase": {"loaded": ..., "chunks": ...}}`.
+  `sttProvider: "webspeech"` means `SARVAM_API_KEY` never reached the host's
+  environment; `render.yaml` declares the key `sync: false`, so it must be
+  filled in manually in the Render dashboard, and if it is absent the app
   silently and correctly falls back to `webspeech`.
-- The knowledge-base RAG path depends on a live `embed_query` call. If the
-  host's `GOOGLE_API_KEY` is missing, different from the local one, or has
-  exhausted its daily embedding quota, retrieval is skipped and the turn is
-  answered conversationally. `router.py` logs a distinct warning for this
-  case (`query embedding unavailable — skipping knowledge-base retrieval`)
-  precisely so it can't be mistaken for "the corpus wasn't relevant." Check
-  the host logs for that line when grounding doesn't demonstrate.
+- The knowledge-base RAG path needs two things to work in the container: the
+  index has to load, and `embed_query` has to succeed. `/api/config`'s
+  `knowledgeBase.loaded` answers the first — `false` there means
+  `VectorStore.load` failed (most likely `faiss` unavailable, since the index
+  is saved with `backend: "faiss"` and refuses to load without it). If it
+  reports `loaded: true` with a non-zero chunk count and grounded answers
+  still don't appear, the failure is the embedding call: a `GOOGLE_API_KEY`
+  that is missing, different from the local one, or out of daily embedding
+  quota causes retrieval to be skipped and the turn answered conversationally.
+  `router.py` logs a distinct warning for that case (`query embedding
+  unavailable — skipping knowledge-base retrieval`) precisely so it can't be
+  mistaken for "the corpus wasn't relevant." Check the host logs for that line.
 
 **Voice paths.** `STT_PROVIDER=sarvam` with a real `SARVAM_API_KEY`: record a
 voice question, confirm it transcribes and that the sphere states (listening
