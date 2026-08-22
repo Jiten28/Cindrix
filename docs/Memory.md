@@ -25,9 +25,9 @@ Canonical references: the GitHub repository is
   swapped in later without changing callers.
 - **Per-conversation storage.** Each conversation is one JSON file under
   `data/conversations/<user_id>/`, with an index file for fast listing. This
-  replaced an earlier single shared `conv_history.json`. The older
-  `session_memory.py` module is superseded by `conversation_store.py` and is
-  retained only for reference.
+  replaced an earlier single shared `conv_history.json` written by a
+  `session_memory.py` module, since one flat file couldn't express per-user
+  scoping or list conversations without loading everything.
 - **Streaming response metadata via header.** `/api/chat` returns its reply as a
   streaming plain-text body and carries the (possibly newly created)
   conversation id in an `X-Conversation-Id` response header, rather than

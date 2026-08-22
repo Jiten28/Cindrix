@@ -232,7 +232,20 @@ def stream_route_query(
         kb_store = get_kb_store()
         if kb_store is not None:
             query_vector = embed_query(user_input)
-            retrieved = kb_store.search(query_vector, k=4) if query_vector else []
+            if not query_vector:
+                # Embedding failed (missing/limited key, quota, network). The
+                # corpus may well hold the answer — we just can't look. Say so
+                # distinctly instead of logging it as "corpus not relevant",
+                # which reads as a retrieval result rather than an outage.
+                logger.warning(
+                    "[router] query embedding unavailable — skipping "
+                    "knowledge-base retrieval and answering conversationally. "
+                    "Check GOOGLE_API_KEY and its embedding quota. Query: %r",
+                    user_input[:80],
+                )
+                retrieved = []
+            else:
+                retrieved = kb_store.search(query_vector, k=4)
             decision = guardrails.kb_decision(retrieved)
             top_score = retrieved[0][1] if retrieved else 0.0
 
@@ -262,11 +275,13 @@ def stream_route_query(
 
             # KB_FALLTHROUGH — the corpus isn't about this. Drop the retrieved
             # excerpts entirely so they can't leak into the answer, and let the
-            # normal conversational path handle it.
-            logger.info(
-                "[router] knowledge-base top score %.3f — corpus not relevant, "
-                "answering conversationally: %r", top_score, user_input[:80],
-            )
+            # normal conversational path handle it. Only log a score when there
+            # was a real search to score; the no-embedding case already warned.
+            if retrieved:
+                logger.info(
+                    "[router] knowledge-base top score %.3f — corpus not relevant, "
+                    "answering conversationally: %r", top_score, user_input[:80],
+                )
 
     context = recent_context(user_id, conversation_id)
     prompt = (

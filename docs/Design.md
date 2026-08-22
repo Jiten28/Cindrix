@@ -151,11 +151,16 @@ scatter.
 
 ## Animation Toolkit
 
-Three.js (or a lightweight Canvas 2D particle system if Three.js proves
-unnecessary overhead) drives the sphere itself — this is the one place a
-heavier rendering approach is justified. GSAP for surrounding UI state
-transitions and micro-interactions · Lottie for supplementary pre-built
-animations (loading, success states) · CSS transitions for hover/focus states.
+Canvas 2D drives the sphere and the starfield — a hand-written particle
+system in `frontend/js/particle-sphere.js` and `starfield.js`, no Three.js
+and no WebGL. Both canvases read their accent, text, and glow colors from CSS
+custom properties via `getComputedStyle` and re-read them on a
+`cindrix:themechange` event, so a theme switch recolors them live without a
+reload.
+
+Everything else is CSS: transitions for hover/focus states and keyframes for
+loading and state animations. No GSAP, no Lottie. All motion respects
+`prefers-reduced-motion`.
 
 ## Motion Principles
 
@@ -172,34 +177,46 @@ animations (loading, success states) · CSS transitions for hover/focus states.
 
 ## Responsive Behavior
 
-Desktop-first. On tablet widths, the right info panel collapses behind a toggle;
-the left sidebar collapses to icons-only. Mobile is out of scope until Phase 5.
+Desktop-first, with four breakpoints:
 
-## Implementation Status (Phase 1)
+- **≥1600px** — wider content measure and larger sphere, so the layout uses a
+  big display rather than leaving the composer stranded in the middle.
+- **≤1024px** — tighter spacing in the message list and composer.
+- **≤860px** — the sidebar becomes an overlay drawer: fixed to the left edge,
+  slid out by a negative margin when collapsed, with a scrim behind it that
+  closes it on tap. It sits above the sticky topbar so the drawer is never
+  half-covered.
+- **≤640px (phones)** — the topbar's status badge is dropped (the model
+  select already shows the active model, so it's the redundant element worth
+  losing first), the selects narrow, and the control row scrolls horizontally
+  rather than clipping if content still overflows. The landing view drops its
+  viewport height clamp so the composer stays reachable when a mobile keyboard
+  opens, which `dvh` alone doesn't reliably handle across browsers.
 
-What actually shipped vs. what's still just planned, since a couple of things
-drifted during the build:
+## What shipped, and where it diverged from the original spec
 
-- **Right info panel** (model/memory/sentiment/tools-used/stats from the
-  original mockup) — **not built**. The simpler landing→chat layout took
-  priority. Revisit in Phase 2/3 if tool-use visibility becomes a real gap.
-- **Message formatting** — assistant replies render basic markdown (bold,
-  inline code, code fences) via a small hand-rolled parser in `app.js`, not a
-  library. Not in the original spec, added because Gemini's output needed it.
-- **Voice mode UI** — implemented as a single mic button that starts/stops a
-  full turn-based conversation loop, not a separate "voice mode" toggle
-  layered on top of always-available text chat. Simpler than what was
-  originally sketched, and matches what was actually asked for during the
-  build.
-- **Ambient glow behind the sphere** — added (soft radial gradient, not in
-  the original palette/motion spec) to keep the chat view from feeling empty
-  once the sphere shrinks down from its landing-page size. Now uses the
-  amber Ember Violet glow value — see Color Palette above.
-- **Sphere mouse-interactivity** — **built**. A parallax tilt (whole
+- **Right info panel** (model/tools-used/stats from the original mockup) —
+  **not built**. The simpler landing→chat layout took priority, and the
+  analytics modal covers the same need without a permanent panel competing
+  with the sphere for attention.
+- **Message formatting** — assistant replies render markdown (bold, inline
+  code, code fences) via a small hand-rolled parser in `app.js`, with
+  `highlight.js` for syntax highlighting inside fences. Not in the original
+  spec; added because model output needed it.
+- **Voice mode UI** — a single mic button that starts and stops a full
+  turn-based conversation loop, rather than a separate "voice mode" toggle
+  layered over always-available text chat. Simpler than the original sketch.
+- **Ambient glow behind the sphere** — added (soft radial gradient, not in the
+  original palette/motion spec) to keep the chat view from feeling empty once
+  the sphere shrinks down from its landing-page size. Uses the Ember Violet
+  glow value — see Color Palette above.
+- **Sphere mouse-interactivity** — **built**. A parallax tilt (the whole
   sphere leans gently toward the cursor's page position) plus a local
-  screen-space repulsion (particles near the actual cursor nudge away),
-  both layered additively on top of the existing idle/listening/thinking/
-  speaking state math in `particle-sphere.js` — no per-state radius/
-  rotation/offset logic changed. Skipped under `prefers-reduced-motion`,
-  same as the rest of that file's motion. See Memory.md's dated entry for
-  the session this shipped in.
+  screen-space repulsion (particles near the cursor nudge away), both layered
+  additively on top of the existing idle/listening/thinking/speaking state
+  math in `particle-sphere.js` — no per-state radius/rotation/offset logic
+  changed. Skipped under `prefers-reduced-motion`, like the rest of that
+  file's motion.
+- **Language switcher** — a topbar select translating UI chrome across
+  English, Spanish, French, and Hindi. Not in the original spec.
+

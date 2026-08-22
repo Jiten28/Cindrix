@@ -78,8 +78,6 @@ Usage is logged and made visible.
 - **History:** full per-conversation storage (`app/memory/conversation_store.py`,
   one JSON file per conversation) replaced an earlier single shared history
   file. The sidebar list is real; clicking an entry loads that conversation.
-  The earlier `session_memory.py` is superseded by this and kept only for
-  reference.
 - **Export:** any conversation exports to Markdown or JSON via
   `/api/conversations/<id>/export`.
 

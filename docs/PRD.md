@@ -7,120 +7,146 @@
 ## Context
 
 An independent personal project — built solo, no organizational affiliation
-or outside guidance. Built as an industry-grade AI chatbot product, not a
-toy demo — intended to double as a portfolio piece for AI/ML and software
-engineering roles, and as a submission to HHGoa's #RAGInGoa hackathon (see
-the Hackathon Submission Requirement section below).
+or outside guidance. Built as an industry-grade AI chatbot product rather
+than a toy demo, and intended to double as a portfolio piece for AI/ML and
+software engineering roles. Its original brief was HHGoa's #RAGInGoa
+voice-enabled RAG task, which shaped the retrieval requirements in this
+document.
 
 ## Problem Statement
 
 Most personal-project chatbots are barebones Q&A wrappers around an LLM API
 with no memory, no personality, and no real UX design. CINDRIX aims to feel
 like a real AI companion: it remembers context across sessions, understands
-intent and sentiment, responds through an expressive animated face, and
-gives the user a professional dashboard to see what it's doing (which
-model, which tools, memory status).
+intent, responds through an expressive animated particle sphere, and gives
+the user a dashboard to see what it's doing (which model, which tools,
+usage history).
 
 ## Target Users
 
-- **Primary (portfolio reviewers / hackathon judges):** judging technical
-  depth, architecture quality, and UI polish.
-- **Secondary (end users of the deployed demo):** anyone chatting with CINDRIX for
-  general assistance, Q&A, document understanding, and voice interaction.
+- **Primary (technical reviewers):** judging technical depth, architecture
+  quality, and UI polish.
+- **Secondary (end users of the deployed app):** anyone chatting with CINDRIX
+  for general assistance, Q&A, document understanding, and voice interaction.
 
 ## Goals
 
 1. Deliver a working, deployable chatbot with a distinctive visual identity (not a
    ChatGPT/Gemini/Baymax clone).
-2. Demonstrate real NLP/AI engineering: intent recognition, contextual memory,
-   sentiment-aware responses — not just a raw API passthrough.
-3. Ship incrementally across 5 phases with a working demo at the end of each.
+2. Demonstrate real AI engineering: intent routing, contextual memory, retrieval
+   grounding, and provider resilience — not just a raw API passthrough.
+3. Ship incrementally, with a working demo at every step.
 4. Produce a resume-worthy codebase: modular architecture, RAG, tool-calling,
-   streaming responses, Docker support.
+   streaming responses, tests, Docker support.
 
-## Non-Goals (explicitly out of scope for now)
+## Non-Goals (explicitly out of scope)
 
-- Native mobile apps (Phase 5, stretch only)
-- Multi-tenant SaaS billing/auth-at-scale
-- Training a custom LLM from scratch (we use Gemini API, not a custom model)
-- Full WhatsApp/Telegram/Slack integrations (nice-to-have, not core)
+- Native mobile apps (the web UI is responsive; there is no native client)
+- Multi-tenant SaaS billing / auth-at-scale
+- Training a custom LLM from scratch — this uses hosted provider APIs
+- WhatsApp/Telegram/Slack integrations
 
 ## Key Features
 
 ### Conversational Core
 
-- Intent recognition and Named Entity Recognition (NER) for extracting key info
-  from user queries
-- Persistent contextual memory across a session and across sessions (long-term
-  memory)
-- Multi-intent handling within a single query (intent prioritization)
-- Sentiment/emotion detection that adjusts response tone
-- Fallback and error-handling flows when intent confidence is low
+- Intent routing across tool calls, attachment queries, knowledge-base
+  retrieval, and plain conversation
+- Contextual memory within a conversation, persisted per user so history
+  survives across sessions
+- Retrieval grounding with an explicit refusal path when the corpus doesn't
+  confidently answer
+- Error handling and provider fallback so a failed request degrades into a
+  friendly message rather than a raw exception
 
 ### Interaction Modes
 
 - Text chat with streaming responses
-- Voice input (speech-to-text) and voice output (text-to-speech)
+- Voice input (speech-to-text) and voice output (text-to-speech), as a
+  turn-based conversation loop
 - Image upload and understanding (vision)
-- File upload: PDF, TXT, DOCX (parsed and made queryable via RAG)
-- Web search tool and weather lookup tool
+- File upload: PDF, TXT, DOCX — parsed, chunked, and made queryable via RAG
+- Web search, image search, weather, and crypto price tools
 
 ### Experience Layer
 
-- Animated minimalist AI face (idle / thinking / talking / happy / listening /
-  searching / blink states) — see `Design.md`
-- Dark, glassmorphic, premium desktop-first UI
-- Left sidebar: chat history, search chats, AI tools, settings, profile
-- Right-side collapsible panel: current model, memory status, active tools,
-  conversation stats
-- Dark/light theme toggle
+- Animated particle-sphere identity with idle / listening / thinking /
+  speaking states — see `Design.md`
+- Dark-first premium UI, desktop-first but responsive down to phone widths
+- Left sidebar: conversation history, tool shortcuts, analytics, settings,
+  profile
+- Dark/light theme toggle ("Ember Violet" / "Lavender Dusk")
+- UI-chrome localization across English, Spanish, French, and Hindi
 
 ### Platform & Ops
 
-- Multiple selectable AI models (architecture ready even if only Gemini is wired
-  up in Phase 1)
-- Analytics dashboard: usage trends, response effectiveness, conversation stats
-- Conversation export
-- Authentication + admin panel (Phase 4)
-- Dockerized, CI-ready structure for deployment (Render/Railway)
+- Multiple selectable AI models behind a real provider abstraction — selecting
+  a model changes which provider is primary and which is the fallback
+- Analytics dashboard: message totals, average latency, tool-usage breakdown,
+  messages per day
+- Conversation export to Markdown or JSON
+- Authentication + admin panel
+- Automated test suite and CI; Dockerized for deployment (Render)
+
+## Requirements dropped during implementation
+
+Recorded rather than quietly deleted, since each was a deliberate call:
+
+- **Named Entity Recognition as a distinct stage** — the router extracts what
+  it actually needs (city names for weather, coin names for crypto) with
+  targeted patterns. A general NER layer would have added a dependency and a
+  latency cost for entities nothing consumes.
+- **Sentiment/emotion detection adjusting response tone** — not built. It
+  would need either a second model call per turn (a latency cost on the
+  highest-traffic path) or a keyword heuristic too crude to be worth
+  claiming. Nothing in the codebase computes sentiment.
+- **Multi-intent handling within one query** — the router picks a single
+  strategy per turn, in a defined priority order. Genuine multi-intent
+  handling needs an orchestration loop, which is a larger change than the
+  feature justified.
+- **Long-term memory across conversations** — history persists per user and
+  every past conversation is browsable, but the assistant's context window
+  is scoped to the current conversation. There is no cross-conversation
+  summarization or retrieval.
+- **Right-side collapsible info panel** — the analytics modal covers the same
+  need without a permanent panel competing with the sphere for attention.
+  See `Design.md`.
 
 ## Success Metrics
 
-- All Phase 1–3 features demoable end-to-end without manual intervention
-- Chatbot maintains context correctly across at least 10 conversational turns
-- Response latency acceptable for streaming UX (first token < ~2s on typical query)
-- Zero unhandled exceptions surfaced to the UI (all errors caught and shown as
-  friendly messages)
-- Codebase passes a basic review for modularity: business logic fully separated
-  from routes/UI
+- Every listed feature demoable end-to-end without manual intervention
+- Context maintained correctly across at least 10 conversational turns
+- Response latency acceptable for streaming UX (first token ~1.3s P70 on a
+  grounded query — see `Testing.md`)
+- Zero unhandled exceptions surfaced to the UI — all errors caught and shown
+  as friendly messages
+- Business logic fully separated from routes and UI
 
 ## Constraints
 
-- Backend: Python (Flask, or FastAPI if switched — see `Architecture.md`)
+- Backend: Python / Flask
 - No CSS frameworks (Bootstrap/Tailwind) — custom CSS only, per design brief
-- AI provider: Gemini API, architected to support additional models later
-- Storage: SQLite for development, PostgreSQL path kept open for later
+- AI providers: Groq primary and Gemini fallback, behind an abstraction that
+  supports adding more
+- Storage: JSON files behind stable interfaces, so a database can be
+  introduced later without changing callers
 - Must not visually or functionally clone ChatGPT, Gemini, or Baymax
 
 ## Stakeholders
 
-- You (developer — sole author)
-- HHGoa #RAGInGoa hackathon judges
-- (Optional) end users of the public demo, if deployed
+- Developer (sole author)
+- End users of the public deployment
 
-## Hackathon Submission Requirement (formal, added — see Memory.md)
+## Core requirement: voice question → grounded voice answer
 
-This build is being submitted to HHGoa's #RAGInGoa hackathon (Task #2:
-Voice-Enabled RAG Model, deadline Aug 22, 2026). That task has one hard,
-formal requirement this PRD is now
-explicit about rather than leaving implied by the code: **a user must be
-able to ask a question by voice and receive a spoken answer that is
-grounded in retrieved document content (RAG), not a generic response.**
-Concretely: voice input (speech-to-text) → the same retrieval-augmented
-query pipeline used for typed input → voice output (text-to-speech) of
-the grounded answer, end to end, with no separate/lesser voice-only code
-path. The existing "Voice input/output" and "File upload... RAG" bullets
-above already cover the underlying capabilities — this section exists to
-state plainly that their combination (voice question → RAG-grounded
-voice answer) is the literal judged requirement, not just two adjacent
-features.
+The single hard requirement this product is built around, stated explicitly
+rather than left implied by the code: **a user must be able to ask a question
+by voice and receive a spoken answer that is grounded in retrieved document
+content, not a generic response.**
+
+Concretely: voice input (speech-to-text) → the same retrieval-augmented query
+pipeline used for typed input → voice output (text-to-speech) of the grounded
+answer, end to end, with no separate or lesser voice-only code path. The
+"Voice input/output" and "File upload … RAG" capabilities above cover the
+underlying pieces; this section exists to state that their *combination* is
+the requirement, not two adjacent features that happen to both exist.

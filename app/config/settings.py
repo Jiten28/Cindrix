@@ -8,10 +8,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 GOOGLE_API_KEY: str = os.getenv("GOOGLE_API_KEY", "").strip()
-GOOGLE_CSE_ID: str = os.getenv("GOOGLE_CSE_ID", "").strip()  # legacy — no longer used
 TAVILY_API_KEY: str = os.getenv("TAVILY_API_KEY", "").strip()
-GOOGLE_API_LOCATION: str = os.getenv("GOOGLE_API_LOCATION", "us").strip()
-HISTORY_FILE: str = os.getenv("HISTORY_FILE", "data/conv_history.json").strip()
 
 # --- Groq (primary generation provider) -----------------------------------
 # Groq primary + Gemini fallback, both required (unlike the optional TAVILY key).

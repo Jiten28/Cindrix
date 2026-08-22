@@ -3,322 +3,274 @@
 ## Tech Stack
 
 ### Backend
-- Python 3.11+
-- Flask (FastAPI acceptable as a drop-in swap if async/streaming needs outgrow Flask)
-- Groq API (primary generation provider — `openai/gpt-oss-120b`, hand-rolled
-  via `requests` in `app/ai/groq_client.py`) with Gemini as the fallback; see
-  the "Generation Provider Chain" section below
-- Gemini API via the `google-genai` SDK (generation fallback, embeddings via
-  `gemini-embedding-001`, and the vision/image path; abstracted behind
-  `app/ai/gemini_client.py` so more models can be added later — note: the
-  older `google-generativeai` package and `gemini-1.5-x` models are
-  deprecated/shut down, don't reintroduce them — see `Memory.md`)
-- LangChain — optional, only if it earns its complexity; otherwise hand-rolled
-  RAG/tool-calling is fine and easier to explain in a review
-- SQLite (dev) → PostgreSQL (future)
-- Redis — future response/session caching
+- Python 3.11+, Flask (app factory pattern), gunicorn in production
+- Groq API — primary generation provider (`openai/gpt-oss-120b`), hand-rolled
+  via `requests` in `app/ai/groq_client.py` rather than the `groq`/`openai`
+  SDK: one REST endpoint doesn't justify another dependency
+- Gemini API via the `google-genai` SDK — generation fallback, embeddings
+  (`gemini-embedding-001`), and the vision/image path, behind
+  `app/ai/gemini_client.py`. The older `google-generativeai` package and
+  `gemini-1.5-x` models are deprecated and return live 404s; see `Memory.md`
+- FAISS (`faiss-cpu`) for the vector index, with a numpy exact-search
+  fallback when it isn't installed
+- `huggingface_hub` + `pyarrow` for dataset loading; `pypdf` and
+  `python-docx` for document extraction
+- No LangChain, no ORM, no SQL database, no Redis. Retrieval and tool
+  dispatch are hand-rolled — small enough to read in one sitting and easier
+  to explain in review than a framework's abstractions. Persistence is JSON
+  files behind stable interfaces (see Storage layout below)
 
 ### Frontend
-- HTML5 / CSS3 (custom, no Bootstrap/Tailwind)
-- Vanilla JavaScript
-- Three.js (or lightweight Canvas 2D) — renders the core particle-sphere identity
-- GSAP (surrounding UI state transitions and micro-interactions)
-- LottieFiles (supplementary micro-animations)
+- HTML5 / CSS3 — hand-written, no Bootstrap or Tailwind. Design tokens as
+  CSS custom properties drive both themes
+- Vanilla JavaScript, no bundler and no framework
+- Canvas 2D for the particle sphere and starfield — no Three.js, no WebGL.
+  Both read their colors from CSS custom properties so a theme switch
+  recolors them live
+- CSS transitions and keyframes for motion — no GSAP, no Lottie
+- Two CDN libraries: `highlight.js` for code-block syntax highlighting and
+  `i18next` for UI-chrome translation (UMD builds, since there is no bundler)
 
 ## High-Level Flow
 
 ```
 Browser (frontend/)
-   │  fetch / WebSocket (streaming)
+   │  fetch() — plain streaming text response
    ▼
-Flask app (app/api/) ──► app/agents/  (decides: answer directly, call a tool, or
-   │                        pull from memory/RAG)
-   │
-   ├──► app/ai/        (Gemini client, prompt templates, streaming handler)
-   ├──► app/memory/     (short-term session memory + long-term persisted memory)
-   ├──► app/tools/       (web search, weather, file/PDF parsing, OCR)
+Flask app (app/api/) ──► app/agents/router.py  (decides: answer directly,
+   │                        call a tool, use an attachment, or query the
+   │                        knowledge base)
+   ├──► app/ai/         (Groq + Gemini clients, retry/fallback chain, STT)
+   ├──► app/rag/        (chunking, vector store, guardrails, ingest)
+   ├──► app/memory/     (per-conversation history, active attachment)
+   ├──► app/tools/      (web search, weather, crypto, document parsing)
    ├──► app/analytics/  (event logging → dashboard aggregation)
-   ├──► app/auth/       (Phase 4: login/session)
-   └──► app/database/   (SQLite models: users, conversations, messages, memory,
-                          analytics events)
+   └──► app/auth/       (signup/login, signed-cookie sessions, admin flag)
 ```
 
 Request lifecycle for a chat turn:
-1. Frontend sends user message (+ optional file/image) to `app/api/`.
-2. API layer validates input, loads session context from `app/memory/`.
-3. `app/agents/` decides the response strategy: direct LLM call, RAG lookup
-   (`app/tools/` + embeddings in `data/embeddings/`), or tool call (search/weather).
-4. `app/ai/` streams the model response back through the API layer via
-   Server-Sent Events or WebSocket.
-5. `app/memory/` persists the turn (short-term always, long-term if flagged
-   relevant).
-6. `app/analytics/` logs the event (latency, tokens, tool used, sentiment).
-7. Frontend renders the streamed text and drives the particle sphere's state
-   (idle → listening → thinking → speaking) off the stream lifecycle events.
+1. Frontend sends the user message to `/api/chat`.
+2. The API layer validates input and resolves the current user and
+   conversation, creating the conversation if this is its first message.
+3. `app/agents/router.py` classifies intent and picks a strategy, in order:
+   unsafe-input block → explicit tool intent → active attachment (document
+   RAG or image vision) → knowledge-base RAG → plain conversational.
+4. `app/ai/retry.py` streams the model response through the chosen provider,
+   falling back to the other provider if the primary exhausts its retries.
+   The response body is plain streaming text; the (possibly new) conversation
+   id comes back in an `X-Conversation-Id` header rather than wrapping the
+   stream in JSON.
+5. `app/memory/conversation_store.py` persists both messages of the turn.
+6. `app/analytics/events.py` logs the turn: timestamp, user, conversation,
+   tool used, latency, and message length.
+7. The frontend renders the streamed text and drives the particle sphere's
+   state (idle → listening → thinking → speaking) off the stream lifecycle.
+   The `speaking` state is tied to TTS playback actually starting, not to
+   generation, so a typed reply never triggers it.
 
-## Current State (Phases 1–3 complete)
 
-`gemini_retrieval.py` has been fully split apart; real frontend, real
-multi-conversation backend, analytics, export:
+## Repository layout
 
 ```text
 Cindrix/
 ├── docs/
-│   ├── PRD.md
-│   ├── Architecture.md
-│   ├── Design.md
-│   ├── Rules.md
-│   ├── Phases.md
-│   └── Memory.md
+│   ├── PRD.md              # product requirements
+│   ├── Architecture.md     # this file
+│   ├── Design.md           # visual system, sphere states
+│   ├── Rules.md            # engineering constraints
+│   ├── Phases.md           # capabilities as delivered
+│   ├── Memory.md           # technical decisions and why
+│   └── Testing.md          # test coverage + manual verification
 ├── app/
-│   ├── __init__.py            # Flask app factory — sets secret_key, serves frontend/ as static
-│   ├── config/settings.py     # includes AVAILABLE_MODELS (Phase 4 model selector) and SECRET_KEY
+│   ├── __init__.py              # Flask app factory — secret_key, serves frontend/ as static
+│   ├── config/settings.py       # env-based settings, AVAILABLE_MODELS, RAG thresholds
 │   ├── ai/
-│   │   ├── gemini_client.py   # chat + vision, both take an optional validated `model` override (Phase 4)
-│   │   └── embeddings.py      # Gemini embeddings + cosine similarity (RAG)
+│   │   ├── gemini_client.py     # chat + vision, optional validated model override
+│   │   ├── groq_client.py       # OpenAI-compatible /chat/completions via requests
+│   │   ├── retry.py             # retry budgets + Groq↔Gemini provider fallback chain
+│   │   ├── embeddings.py        # Gemini embeddings, asymmetric doc/query task types
+│   │   └── stt.py               # Sarvam speech-to-text (saaras:v3)
+│   ├── rag/
+│   │   ├── dataset.py           # MSMARCO-XI shard loader (hf_hub_download + pyarrow)
+│   │   ├── chunking.py          # four chunking strategies + hybrid router
+│   │   ├── vector_store.py      # FAISS IndexFlatIP with a numpy exact-search fallback
+│   │   ├── ingest.py            # dataset → chunk → embed → index → save
+│   │   ├── guardrails.py        # unsafe block, off-topic screen, three-band kb_decision()
+│   │   └── benchmark.py         # per-stage P50/P70/P100 latency harness
 │   ├── tools/
-│   │   ├── weather.py, crypto.py, search.py
-│   │   └── documents.py       # PDF/TXT/DOCX extraction + chunking
+│   │   ├── weather.py           # Open-Meteo, model-estimate fallback
+│   │   ├── crypto.py            # CoinGecko price lookup
+│   │   ├── search.py            # web search + image search
+│   │   └── documents.py         # PDF/TXT/DOCX extraction + chunking
 │   ├── memory/
-│   │   ├── conversation_store.py   # per-user, per-conversation JSON storage (Phase 3, scoped in Phase 4)
-│   │   ├── attachment_store.py     # per-user active document/image slot (Phase 2, scoped in Phase 4)
-│   │   └── session_memory.py       # superseded by conversation_store.py — kept as reference
-│   ├── analytics/events.py    # event logging + summary (Phase 3); now tags/filters by user_id (Phase 4)
+│   │   ├── conversation_store.py   # per-user, per-conversation JSON storage
+│   │   └── attachment_store.py     # active document/image slot per (user, conversation)
+│   ├── analytics/events.py      # event logging + summary aggregation, scoped by user_id
 │   ├── auth/
-│   │   ├── users_store.py     # JSON user storage, password hashing (Phase 4)
-│   │   └── current_user.py    # current_user_id()/current_user()/is_admin() session helpers
-│   ├── agents/router.py       # tool routing + detect_tool() classification; threads user_id + model
+│   │   ├── users_store.py       # JSON user storage, password hashing
+│   │   └── current_user.py      # current_user_id()/current_user()/is_admin() helpers
+│   ├── agents/router.py         # tool routing + detect_tool() classification
 │   └── api/
-│       ├── routes.py          # /api/chat, /api/conversations*, /api/upload, /api/attachment,
-│       │                       # /api/analytics/summary, /api/models — all user-scoped
-│       ├── auth_routes.py     # /api/auth/signup, /login, /logout, /me, /change-password
-│       └── admin_routes.py    # /api/admin/users, /api/admin/stats — is_admin gated
+│       ├── routes.py            # /api/chat, /api/conversations*, /api/upload, /api/attachment,
+│       │                        # /api/stt, /api/analytics/summary, /api/models, /api/config
+│       ├── auth_routes.py       # /api/auth/signup, /login, /logout, /me, /change-password
+│       └── admin_routes.py      # /api/admin/users, /api/admin/stats — is_admin gated
 ├── frontend/
 │   ├── index.html
+│   ├── favicon.svg
 │   ├── css/style.css
-│   └── js/app.js, particle-sphere.js, starfield.js
-├── examples/
-│   ├── conv_history.example.json   # sample output, not live data (legacy — see session_memory.py note)
-│   └── chat.log.example            # sample output, not live data
-├── data/                            # gitignored
-│   ├── conversations/<user_id>/     # one subdirectory per user, one JSON file per conversation + _index.json
-│   ├── embeddings/_attachments/     # one active-attachment JSON per user_id
-│   ├── uploads/                     # uploaded documents/images
-│   ├── users.json                   # user accounts (hashed passwords only)
-│   └── analytics_events.json
+│   ├── i18n/en.json, es.json, fr.json, hi.json   # UI-chrome translations
+│   └── js/app.js, particle-sphere.js, starfield.js, i18n.js
+├── rag_index/                   # built knowledge-base index — committed, ships in the image
+├── data/                        # gitignored runtime state (see Storage layout above)
+├── tests/test_health.py, test_rag.py
+├── .github/workflows/ci.yml     # compile check + pytest + frontend JS syntax check
+├── Dockerfile, docker-compose.yml, .dockerignore
+├── render.yaml                  # Render blueprint
 ├── .env.example
-├── .gitignore
-├── README.md
 ├── requirements.txt
-├── run.py
-└── gemini_retrieval.py              # legacy — superseded by app/, kept for reference
+├── run.py                       # entry point
+└── Readme.md
 ```
 
-`gemini_retrieval.py` no longer runs anything — `run.py` is the real entry
-point now. It's kept in the repo only as a reference for what the original
-prototype looked like; delete it whenever that's no longer useful.
+The project began as a single-file CLI prototype (`gemini_retrieval.py`) that
+held Gemini calls, keyword intent routing, JSON conversation memory, and TTS
+in one place. Everything in it was relocated rather than discarded: `app/ai/`
+took the model clients, `app/agents/` the routing, `app/memory/` the history
+persistence, `app/tools/` the weather/search/crypto lookups. The prototype
+itself is no longer in the repo.
 
-The section below is the original Phase 1 planning target, kept for history —
-compare against the tree above to see what changed during actual
-implementation (notably: `examples/`, `.env.example`, and `.gitignore` weren't
-in the original plan, and `tests/` still doesn't exist).
+## Storage layout
 
-## Original Phase 1 Planning Target
+There is no SQL database. All persistent state is JSON files under `data/`,
+behind stable module interfaces (`app/memory/`, `app/analytics/`) so a real
+database can be swapped in later without changing callers.
 
-What actually existed in the repo before Phase 1 work began:
+| Path | Shape | Written by |
+|---|---|---|
+| `data/users.json` | list of `{id, username, email, password_hash, display_name, default_voice, is_admin, created_at}` | `app/memory/user_store.py` |
+| `data/conversations/<user_id>/_index.json` | list of `{id, title, created_at, updated_at, message_count}` — the sidebar listing, so listing never opens every conversation | `app/memory/conversation_store.py` |
+| `data/conversations/<user_id>/<conv_id>.json` | `{id, title, created_at, updated_at, messages: [{role, content, ts}]}` | `app/memory/conversation_store.py` |
+| `data/analytics_events.json` | list of `{ts, event_type, user_id, conversation_id, tool_used, latency_ms, message_len}` | `app/analytics/events.py` |
+| `data/uploads/` | uploaded document and image files | `app/api/` upload route |
+| `data/embeddings/` | per-attachment chunk text + vectors | `app/memory/attachment_store.py` |
+| `rag_index/` | the built knowledge-base index (FAISS binary + chunk metadata + latency report) — read-only build output, deliberately **outside** `data/` | `app/rag/ingest.py` |
 
-```text
-Cindrix/
-├── docs/
-│   ├── PRD.md
-│   ├── Architecture.md
-│   ├── Design.md
-│   ├── Rules.md
-│   ├── Phases.md
-│   └── Memory.md
-├── examples/
-│   ├── conv_history.example.json   # sample output, not live data
-│   └── chat.log.example            # sample output, not live data
-├── .env.example
-├── .gitignore
-├── README.md
-├── gemini_retrieval.py             # CLI entry point — all current logic lives here
-└── requirements.txt
-```
-
-`gemini_retrieval.py` used to hold everything: Gemini calls, keyword-based
-intent routing (crypto/weather/image/search/chit-chat), JSON conversation
-memory, and TTS. That's now split across the `app/` structure shown above and
-in the target structure below — `app/ai/` has the Gemini client, `app/agents/`
-has the routing logic (still keyword-based — upgrading to real intent
-handling is still open, see `Memory.md`), `app/memory/` has history
-persistence, `app/tools/` has weather/search/crypto. Nothing was thrown away;
-it was relocated and formalized.
-
-## Target Folder Structure (Phase 1+)
-
-```text
-Cindrix/
-│
-├── app/
-│   ├── api/          # Flask routes / blueprints, request validation
-│   ├── ai/           # Model provider clients, prompt templates, streaming
-│   ├── agents/        # Orchestration: routing between direct answer / tool / RAG
-│   ├── memory/        # Short-term (session) + long-term (persisted) memory
-│   ├── tools/          # Web search, weather, file parsing, OCR, RAG retrieval
-│   ├── analytics/      # Event logging, aggregation for dashboard
-│   ├── auth/           # Login, sessions, admin (Phase 4)
-│   ├── database/       # SQLAlchemy models, migrations
-│   ├── services/       # Cross-cutting business logic used by multiple routes
-│   ├── utils/           # Small stateless helpers
-│   └── config/          # Env-based settings, model configs
-│
-├── frontend/
-│   ├── assets/
-│   │   ├── icons/
-│   │   ├── avatar/       # Particle-sphere renderer assets/shaders, Lottie states
-│   │   ├── animations/
-│   │   └── sounds/
-│   ├── css/
-│   ├── js/
-│   ├── components/
-│   └── pages/
-│
-├── docs/
-│   ├── PRD.md
-│   ├── Architecture.md
-│   ├── Design.md
-│   ├── Rules.md
-│   ├── Phases.md
-│   └── Memory.md
-│
-├── data/
-│   ├── chat_logs/
-│   ├── uploads/
-│   ├── embeddings/
-│   └── cache/
-│
-├── examples/
-│   ├── conv_history.example.json
-│   └── chat.log.example
-│
-├── tests/
-├── .env.example
-├── .gitignore
-├── requirements.txt
-├── run.py
-└── README.md
-```
-
-## Database Schema (initial draft)
-- `users` — id, email, hashed_password, created_at (Phase 4)
-- `conversations` — id, user_id (nullable pre-auth), title, model_used, created_at
-- `messages` — id, conversation_id, role, content, sentiment, created_at
-- `memory_entries` — id, user_id/conversation_id, summary, embedding_ref, created_at
-- `analytics_events` — id, event_type, conversation_id, latency_ms, tool_used,
-  created_at
+Conversation titles are derived from the first user message rather than
+stored separately. `user_id` is `guest` for unauthenticated use, so the same
+code paths serve both signed-in and anonymous sessions.
 
 ## Integration Points
-- **Groq API** — primary generation LLM, streaming responses; **Gemini API**
-  — generation fallback + embeddings + vision (see "Generation Provider
+- **Groq API** — primary generation provider, streaming; **Gemini API** —
+  generation fallback plus embeddings and vision (see "Generation Provider
   Chain")
-- **Web search tool** — pluggable provider behind `app/tools/`
-- **Weather API** — Open-Meteo (keyless geocoding + forecast REST APIs), with
-  a Gemini best-effort estimate as fallback
-- **RAG pipeline** — file upload → parse (PDF/DOCX/TXT) → chunk → embed → store in
-  `data/embeddings/` → retrieve on query
+- **Sarvam AI** — server-side speech-to-text (`saaras:v3`) via `app/ai/stt.py`
+- **Open-Meteo** — keyless geocoding + forecast REST APIs, with a model
+  best-effort estimate as fallback for places it can't geocode
+- **CoinGecko** — keyless crypto price lookup
+- **Tavily** — image search; general web search goes through Gemini's Google
+  Search grounding
+- **HuggingFace Hub** — downloads the MSMARCO-XI parquet shard at ingest time
+- **Attachment RAG** — file upload → parse (PDF/DOCX/TXT) → chunk → embed →
+  store in `data/embeddings/` → retrieve on query
+- **Knowledge-base RAG** — a separate, pre-built index in `rag_index/`; see
+  "Retrieval, Vector Store & Guardrails"
 
 ## Voice I/O
 
-Both directions of voice run entirely client-side in `frontend/js/app.js`,
-with no dedicated voice backend or added server dependency:
-
 - **Input (STT):** two providers, switched by `STT_PROVIDER` (see
-  `app/config/settings.py`):
-  - `webspeech` (default): the browser's native `SpeechRecognition` (Web
-    Speech API), entirely client-side, no key needed. Dev/fallback path,
-    unchanged from Hackathon Phase 1.
+  `app/config/settings.py`). The default is resolved from configuration
+  rather than hardcoded: `sarvam` whenever `SARVAM_API_KEY` is present,
+  `webspeech` otherwise, so a fresh clone has working voice input with no
+  account while a configured deployment uses the real STT service.
   - `sarvam`: server-side, via `app/ai/stt.py` calling Sarvam's
     `/speech-to-text` REST endpoint (`saaras:v3`, Indic-language-focused —
     picked over ElevenLabs for that reason, since it matches the
-    MSMARCO-XI corpus this app retrieves against). Required for hackathon
-    compliance (Web Speech API doesn't qualify per the task brief) —
-    used for the hackathon live link/demo video specifically, not a
-    replacement of the dev path. The frontend records audio via
-    `MediaRecorder` + a small Web Audio volume analyser for
-    silence-based auto-stop (WebSpeech gets end-of-speech detection for
-    free from the browser; raw audio recording doesn't, so it's built in
-    `frontend/js/app.js`), then POSTs the clip to `/api/stt`.
-    `SARVAM_API_KEY` never reaches the browser — only the backend holds
-    it, per `Rules.md`. `/api/config` tells the frontend which provider
-    is live so it wires up the right one at page load.
+    MSMARCO-XI corpus this app retrieves against). This is the primary
+    path. The frontend records audio via `MediaRecorder` + a small Web
+    Audio volume analyser for silence-based auto-stop (WebSpeech gets
+    end-of-speech detection for free from the browser; raw audio recording
+    doesn't, so it's built in `frontend/js/app.js`), then POSTs the clip to
+    `/api/stt`. `SARVAM_API_KEY` never reaches the browser — only the
+    backend holds it, per `Rules.md`. `/api/config` tells the frontend
+    which provider is live so it wires up the right one at page load.
+  - `webspeech`: the browser's native `SpeechRecognition` (Web Speech API),
+    entirely client-side, no key needed. Keyless fallback for local
+    development, and Chrome/Edge only.
   Both providers funnel into the exact same `sendMessage(transcript,
   true)` call once a final transcript exists — the RAG routing, retry
   handling, and TTS output described below are identical regardless of
   which one produced the text.
 - **Output (TTS):** the browser's native `speechSynthesis`
-  (`SpeechSynthesisUtterance`), not a server-side library — a
-  server-rendered-audio approach (e.g. the old CLI prototype's `pyttsx3`)
+  (`SpeechSynthesisUtterance`), not a server-side library. A
+  server-rendered-audio approach (the original CLI prototype used `pyttsx3`)
   doesn't produce audio in a deployed browser context on Render, and would
   add an audio-upload/-download round-trip before the RAG pipeline even
-  starts. Doing STT/TTS client-side avoids that round-trip entirely,
-  which matters for the streaming-response latency target in `PRD.md`.
+  starts. Doing STT/TTS client-side avoids that round-trip entirely, which
+  matters for the streaming-response latency target in `PRD.md`.
   Microsoft's "Natural"/"Online" neural voices are preferred when
   available via `speechSynthesis.getVoices()` (Edge-only, 250+ voices,
   far more natural than default voices) — Chrome/Firefox/Safari fall back
   gracefully to whatever default voice they expose; Edge is never
-  hard-required. `pyttsx3` stays in `requirements.txt`/the old CLI
-  prototype for reference only — nothing in the current app routes
-  through it.
+  hard-required. A user's chosen voice persists to their profile. No
+  server-side TTS dependency remains in `requirements.txt`.
 - Sphere state (`listening` / `thinking` / `speaking`) is driven off this
-  same flow — see `Design.md` for the state table and `Memory.md` for a
-  logged fix to a bug where typed (non-voice) replies were briefly and
-  incorrectly entering the `speaking` state during streaming.
+  same flow — see `Design.md` for the state table and `Memory.md` for why
+  sphere state and audio playback are deliberately decoupled.
 
-## Retrieval, Vector Store & Guardrails (hackathon track)
+## Interface localization
+
+UI chrome is translated with `i18next` (`frontend/js/i18n.js`), with
+translation files in `frontend/i18n/*.json` — English, Spanish, French, and
+Hindi. Strings are marked up declaratively in `index.html` via `data-i18n`,
+`data-i18n-placeholder`, `data-i18n-aria-label`, and `data-i18n-title`
+attributes, so adding a translated element needs no JavaScript change. The
+language switcher is in the topbar; the choice persists to `localStorage`,
+and the initial language is detected from `navigator.language` with an
+English fallback.
+
+Deliberately scoped to UI chrome only. The assistant's own responses are not
+translated — they come back in whatever language the user wrote in — and
+speech recognition stays on `en-US` rather than following the UI language,
+since transcription language is a separate concern from interface language
+and conflating them would silently break voice input for a user who switched
+the UI to browse in another language.
+
+## Retrieval, Vector Store & Guardrails
 
 Everything below lives under `app/rag/` plus small hooks in
 `app/ai/embeddings.py`, `app/ai/retry.py`, and `app/agents/router.py`.
-Added to satisfy the HHGoa hackathon's grading criteria — see
-`docs/Memory.md`'s dated entry for the priority list this came from.
 
 ### Dataset
 
-`ai4bharat/MSMARCO-XI` (`app/rag/dataset.py`) — the hackathon-mandated
-corpus, not a sample. Got this wrong three times in earlier sessions
-before it actually worked against real data — all three mistakes and the
-fixes are worth recording here, since they're exactly the kind of thing a
-stale training-data assumption or an out-of-date usage snippet produces:
+`ai4bharat/MSMARCO-XI` (`app/rag/dataset.py`) — the full dataset, not a
+sample. Reading it requires bypassing the `datasets` library entirely. Three
+distinct failure modes rule out the obvious approaches, and each is worth
+recording because each looks like the correct approach until it is tried:
 
-1. **First mistake:** assumed 14 per-language configs
-   (`load_dataset(..., "hi", split="train")`), copied from the dataset
-   card's own "Usage" code sample. Crashed with `BuilderConfig 'hi' not
-   found. Available: ['default']` — the card's sample is stale relative
-   to the dataset's actual current structure, which exposes a single
-   `"default"` config (11.5M rows total: `train` 10.1M, `validation`
-   1.37M) with all 14 languages mixed together, filterable only by each
-   row's `target_lang` field.
-2. **Second mistake, after fixing the first:** switched to streaming the
-   combined `"default"` config and filtering by `target_lang` in Python
-   as rows passed by. This crashed differently — `MemoryError` + `WinError
-   10038` while downloading `train/asmtrain.parquet` (Assamese). Root
-   cause: `"default"` isn't one combined file, it's **per-language
-   parquet shards** concatenated by the loader, and streaming through the
-   concatenation still has to fetch each shard in full before moving to
-   the next — Assamese apparently sorts before Hindi, so the stream tried
-   to pull all of Assamese's (large) shard before ever reaching a single
-   Hindi row.
-
-3. **Third mistake, after fixing the second:** loading the Hindi shard
-   by name still went through the `datasets` library, which downloaded
-   the full 3.72 GB shard successfully and then died with a vague,
+1. **Per-language configs do not exist.** The dataset card's own "Usage"
+   sample suggests `load_dataset(..., "hi", split="train")`. That fails with
+   `BuilderConfig 'hi' not found. Available: ['default']` — the card's
+   sample is stale relative to the dataset's actual structure, which exposes
+   a single `"default"` config (11.5M rows total: `train` 10.1M,
+   `validation` 1.37M) with all 14 languages mixed together, filterable only
+   by each row's `target_lang` field.
+2. **Streaming the combined config and filtering in Python does not work
+   either.** It fails with `MemoryError` + `WinError 10038` while
+   downloading `train/asmtrain.parquet` (Assamese). Root cause: `"default"`
+   isn't one combined file, it's **per-language parquet shards**
+   concatenated by the loader, and streaming through the concatenation still
+   has to fetch each shard in full before moving to the next — Assamese
+   sorts before Hindi, so the stream pulls all of Assamese's large shard
+   before reaching a single Hindi row.
+3. **Loading the Hindi shard by name through `datasets` still fails.** The
+   full 3.72 GB shard downloads successfully and then dies with a vague,
    swallowed "An error occurred while generating the dataset" — an
    `ArrowNotImplementedError: Nested data conversions not implemented`
-   surfacing from inside `datasets`' Arrow→Python formatting of the
-   nested `passages` struct. `datasets` simply couldn't decode that
-   column shape.
+   surfacing from inside `datasets`' Arrow→Python formatting of the nested
+   `passages` struct. `datasets` cannot decode that column shape.
 
-**Current, working approach:** skip the `datasets` library entirely.
+**The approach that works:** skip the `datasets` library entirely.
 Download the target language's shard file by name with
 `huggingface_hub.hf_hub_download()` (to the local HF cache — a one-time
 cost, cached across runs) and read it with `pyarrow.parquet`, which
@@ -434,30 +386,33 @@ implementation to keep correct, not two.
 
 ### Router wiring (`app/agents/router.py`)
 
-A new `knowledge_base_rag` path sits between the existing attachment-RAG
-path and the final plain-conversational fallback: general queries (no
-tool intent, no active attachment) that aren't obvious chit-chat/
-greetings are checked against the persisted MSMARCO-XI index before
-falling through. **If no index has been built yet** (`python -m
-app.rag.ingest` hasn't been run), `get_kb_store()` returns `None` and
-every general query behaves exactly as it did before this priority —
-this only activates once a knowledge base actually exists on disk.
+The `knowledge_base_rag` path sits between the attachment-RAG path and the
+final plain-conversational fallback: general queries (no tool intent, no
+active attachment) that aren't obvious chit-chat/greetings are checked
+against the persisted MSMARCO-XI index before falling through. **If no index
+has been built** (`python -m app.rag.ingest` hasn't been run),
+`get_kb_store()` returns `None` and every general query is answered
+conversationally — the path only activates once a knowledge base actually
+exists on disk.
 
-**Product-behavior tradeoff worth flagging explicitly** (see `Rules.md`:
-"ask before an architectural decision not already specified"): once an
-index IS built, a general query that doesn't ground well against it gets
-an honest decline (see Guardrails below) rather than falling back to
-Cindrix's normal general-knowledge conversational ability. That's the
-right behavior for hackathon grading (a "Voice-Enabled RAG Model" should
-visibly refuse to answer outside its indexed corpus, not quietly
-fall back to being a generic chatbot while still implying it's grounded)
-but it does mean Cindrix becomes less generally chatty once the
-knowledge base is live — worth a deliberate decision before running this
-same build as a general-purpose portfolio demo outside the hackathon
-context, where broad conversational ability was the original goal.
-Easiest lever if that tradeoff needs to go the other way for a given
-deployment: don't run `ingest.py` (or point `RAG_DATASET_LANGUAGE` at an
-unbuilt index), and the app reverts to pre-hackathon behavior automatically.
+**The product tradeoff this path creates, and how it is resolved:** a
+knowledge-grounded assistant should visibly refuse to answer outside its
+indexed corpus rather than quietly falling back to being a generic chatbot
+while still implying it is grounded. Taken to its extreme, that makes the
+assistant useless for anything the corpus doesn't cover — every general
+question becomes a decline. The three-band guardrail below is the resolution:
+declining is reserved for the narrow band where the corpus *does* hold
+related material but nothing that confidently answers the question (the case
+where answering anyway would be a hallucination risk). When the corpus is
+simply not about the question at all, the retrieved excerpts are dropped
+entirely and the turn is answered conversationally — because declining a
+question the knowledge base was never meant to cover is not honesty, it is
+just a broken assistant. Cindrix therefore stays generally conversational
+while still refusing to fabricate grounded-sounding answers.
+
+If a deployment wants pure corpus-only behavior instead, don't run
+`ingest.py` for the general path — or raise `RAG_DECLINE_FLOOR` to collapse
+the fallthrough band into the decline band.
 
 ### Guardrails (`app/rag/guardrails.py`)
 
@@ -479,12 +434,20 @@ upgrade later; that's a new external dependency/cost decision, which
    empty input), so those still get normal conversational handling
    instead of a forced "not grounded" decline for something that was
    never meant to be a factual lookup.
-3. `check_grounding()` — after retrieval, whether the top result clears
-   `RAG_MIN_RELEVANCE` (default 0.55 cosine similarity). Below it, the
-   router yields `guardrails.DECLINE_MESSAGE` and **never calls Gemini at
-   all** for that turn (verified by test — the generation mock is
-   asserted not-called) — this is a real hard stop, not just a prompt
-   instruction hoping the model declines on its own.
+3. `kb_decision()` — after retrieval, sorts the result into one of three
+   bands using the top hit's cosine score. At or above `RAG_MIN_RELEVANCE`
+   (0.75) the answer is generated strictly from the retrieved excerpts.
+   Between that and `RAG_DECLINE_FLOOR` (0.70) the corpus holds related
+   material but nothing that is a confident match, so the router yields
+   `guardrails.DECLINE_MESSAGE` and **never calls the LLM at all** for that
+   turn (verified by test — the generation mock is asserted not-called).
+   Below the floor the corpus simply isn't about the question, so declining
+   would be wrong; the excerpts are dropped entirely and the turn is answered
+   conversationally. The decline band is deliberately narrow because
+   `gemini-embedding-001` compresses same-language similarity into a tight
+   range — see the calibration note in `app/config/settings.py`. The middle
+   band is a real hard stop, not a prompt instruction hoping the model
+   declines on its own.
 
 ### Generation Provider Chain (`app/ai/retry.py`, `app/ai/groq_client.py`)
 
@@ -526,23 +489,19 @@ lost.
 
 **Why Groq is primary:** originally chosen on Groq's generally-published
 LPU-hardware inference speed (independent third-party benchmarks showing
-3-5x faster time-to-first-token than Gemini Flash). Now partially confirmed
-by this project's own `app/rag/benchmark.py`: a real run on 2026-08-21
-against the built 904-vector Hindi index had Groq (`openai/gpt-oss-120b`)
-serve **5/5** grounded queries as primary with **zero fallbacks**,
-generating a grounded Hindi answer in **~0.96 s P50 / ~1.08 s P70 / ~1.28 s
-P100**. That confirms Groq reliably fills the primary slot at ~1 s per
-grounded Hindi answer and that the provider routing works end-to-end. What
-this run does *not* establish is a head-to-head Groq-vs-Gemini latency
-comparison — because Groq never failed, the Gemini fallback path was never
-exercised, so the 3-5x figure remains third-party, not reproduced here.
-Producing a direct comparison would require deliberately forcing a fallback;
-worth doing later, but the ordering is sound as-is. (Full-benchmark caveat:
-the query-embedding stage was substituted with a real stored index vector
-for this run because the free-tier daily embedding quota was already
-consumed building the index that day — retrieval and generation numbers are
-real, embed-query latency was not measured. See the Latency harness section
-and `docs/Testing.md` §17b.)
+3-5x faster time-to-first-token than Gemini Flash). Confirmed by this
+project's own `app/rag/benchmark.py`: a real run against the built
+868-vector Hindi index had Groq (`openai/gpt-oss-120b`) serve **7/7**
+grounded queries as primary with **zero fallbacks**, generating a grounded
+Hindi answer in **~1.28 s P50 / ~1.62 s P70 / ~2.84 s P100** (first token in
+~1.03 s P50 / ~1.29 s P70). That confirms Groq reliably fills the primary
+slot and that the provider routing works end-to-end. What this run does
+*not* establish is a head-to-head Groq-vs-Gemini latency comparison —
+because Groq never failed, the Gemini fallback path was never exercised, so
+the 3-5x figure remains third-party, not reproduced here. Producing a direct
+comparison would require deliberately forcing a fallback; worth doing later,
+but the ordering is sound as-is. See the Latency harness section below for
+the full per-stage table.
 
 **The chain, in order:**
 1. **Groq** (`app/ai/groq_client.py`, OpenAI-compatible `/chat/completions`
@@ -602,9 +561,10 @@ is what `router.py`'s two RAG paths actually call now.
 
 ### Latency harness (`app/rag/benchmark.py`)
 
-Instruments three live per-query stages — embed query, vector retrieval,
-generation — across a small test-query set, reporting P50/P70/P100 per
-stage and end-to-end. Target: under 200ms end-to-end (P70).
+Instruments five live per-query stages — embed query, embed query with the
+vector already in hand, vector retrieval, time to first token, and full
+generation — across a test-query set, reporting P50/P70/P100 per stage and
+end-to-end. Target: retrieval under 200 ms (P70).
 
 **Deliberately excludes ingest-time chunking/embedding from the per-query
 number** — chunking the corpus happens once at ingest (`app/rag/
@@ -617,50 +577,72 @@ re-chunking per query, which would be straightforwardly bad engineering.
 Runs honestly rather than fabricating numbers: if `GOOGLE_API_KEY` isn't
 set, `embed_query`/`stream_gemini` both short-circuit without a real
 network call (existing behavior, unchanged), so the report is marked
-`"is_self_test": true` with an explicit note, and `meets_target` is
-forced `false` — it never claims to hit the target using numbers that
+`"is_self_test": true` with an explicit note, and `retrieval_meets_target`
+is forced `false` — it never claims to hit the target using numbers that
 didn't involve a real model call.
 
-**Real numbers (run 2026-08-21, against the built 904-vector Hindi index,
-both keys configured):**
+**Real numbers (868-vector Hindi index, both keys configured, 10 test
+queries — 8 in-corpus, 2 deliberately out-of-corpus):**
 
 | Stage | P50 | P70 | P100 |
 |---|---|---|---|
-| embed query | *(stubbed — see below)* | | |
-| vector retrieval (FAISS, local) | 0.90 ms | 1.16 ms | 1.21 ms |
-| generation (Groq `gpt-oss-120b`) | 957.7 ms | 1076.8 ms | 1275.6 ms |
-| **end-to-end** | 958.6 ms | 1077.9 ms | 1276.3 ms |
+| embed query (Gemini, network) | 465.7 ms | 471.8 ms | 1083.5 ms |
+| embed query (cached) | 0.001 ms | 0.001 ms | 0.002 ms |
+| vector retrieval (FAISS, local) | 0.76 ms | 0.78 ms | 0.89 ms |
+| **retrieval total** (embed + search) | 466.6 ms | 472.5 ms | 1084.3 ms |
+| generation (Groq `gpt-oss-120b`) | 1278.1 ms | 1622.6 ms | 2836.4 ms |
+| time to first token | 1030.8 ms | 1291.1 ms | 1933.3 ms |
+| **end-to-end** | 2075.7 ms | 2109.3 ms | 3303.0 ms |
 
-5/5 queries grounded, all 5 served by **Groq (primary)** with zero
-fallbacks (`served_by_breakdown: {"Groq (primary)": 5}`).
+7 of the 8 in-corpus queries grounded above `RAG_MIN_RELEVANCE`; both
+out-of-corpus queries correctly failed to ground (the guardrail working, not
+a retrieval miss). All 7 grounded answers were served by **Groq (primary)**
+with zero fallbacks (`served_by_breakdown: {"Groq (primary)": 7}`).
 
-Two honest caveats on this run, both recorded in the report JSON itself
-(`data/rag_index/latency_report.json`, `measurement_mode` /
-`embed_query_note` fields):
+Ten queries is enough to show where the time goes, not a statistically
+rigorous large-sample percentile — the report says so in its own
+`statistical_note` field rather than leaving the reader to assume otherwise.
 
-1. **The query-embedding stage was not measured.** The free-tier daily
-   embedding quota (1000 requests/day,
-   `EmbedContentRequestsPerDayPerUserPerProjectPerModel-FreeTier`) was
-   consumed building the 904-vector index earlier the same day, so a live
-   `embed_query` would 429. To measure the *rest* of the real pipeline, the
-   query vector was substituted with a real vector reconstructed from the
-   FAISS index (which makes grounding pass at cosine ~1.0). Retrieval and
-   generation numbers are fully real; the embed-query number is not.
-   Re-run the plain `python -m app.rag.benchmark` after the daily quota
-   resets for a true end-to-end embed figure — one `batchEmbedContents`
-   call for a single text, empirically ~100-400 ms from the ingest run's
-   per-batch timings.
+Two things the report is explicit about (`rag_index/latency_report.json`):
+
+1. **Query embedding, not vector search, is the whole retrieval cost.** The
+   FAISS search is ~0.8 ms; the single `gemini-embedding-001` call to turn
+   the question into a vector is ~470 ms of network round-trip. That is
+   ~99.8% of retrieval time and it is entirely a remote API call, not an
+   index property. The harness also records a `embed_query_cached` stage
+   (~0.001 ms) to show what the same retrieval costs once the embedding is
+   in hand — that is the honest measure of the local pipeline.
 2. **The <200 ms end-to-end target is not met — and structurally can't be
-   by this shape of pipeline.** Retrieval, the stage a vector-DB choice
-   actually governs, is ~1 ms (three orders of magnitude under target). The
-   end-to-end number is dominated ~99.9% by the LLM generation itself
-   (~1 s for a full grounded completion), which no retrieval optimization
-   can shrink — a real generated answer costs ~1 s of model time regardless
-   of index. So the honest reading: the *retrieval* pipeline is far under
-   200 ms; *end-to-end with a full generated answer* is ~1 s and
-   generation-bound. `meets_target` is `false` and the report says why.
+   by this shape of pipeline.** Vector search, the stage a vector-DB choice
+   actually governs, is ~0.8 ms (over two orders of magnitude under target).
+   The rest is two remote calls: ~470 ms to embed the query and ~1.6 s to
+   generate a real answer, neither of which any retrieval optimization can
+   shrink. So the honest reading: local retrieval is far under 200 ms;
+   end-to-end with a full generated answer is ~2.1 s and dominated by
+   network-bound model inference. `retrieval_meets_target` is `false` and
+   the report says why.
 
 ## Deployment
-- Dockerfile + docker-compose for local parity
-- CI-ready structure (lint + test on push)
-- Target host: Render — live at https://cindrix-ai.onrender.com/
+
+- **Docker** — `Dockerfile` runs gunicorn, not the Flask dev server.
+  `docker-compose.yml` gives local parity with `data/` volume-mounted.
+- **Render** — `render.yaml` is a Blueprint that Render picks up
+  automatically when the repo is connected. Live at
+  https://cindrix-ai.onrender.com/
+- **Secrets** — every API key is declared `sync: false` in `render.yaml`, so
+  it must be filled in manually in the Render dashboard and is never
+  committed. Worth checking after the first deploy: a missing key doesn't
+  crash the app, it degrades the feature that needs it (no `SARVAM_API_KEY`
+  falls back to `webspeech`; no `GOOGLE_API_KEY` skips knowledge-base
+  retrieval). Both cases log a warning — check `/api/config` and the host
+  logs rather than assuming the deploy is complete.
+- **Persistent disk** — mounted at `/app/data` for mutable runtime state
+  (uploads, conversations, users, analytics). The read-only vector index
+  lives in `rag_index/`, deliberately outside `data/`, because a disk mounted
+  at that path starts empty on first deploy and would shadow anything the
+  image shipped there.
+- **CI** — `.github/workflows/ci.yml` runs a compile check, the pytest suite,
+  and a frontend JS syntax check on every push and pull request.
+- **Cold starts** — Render's free plan spins the instance down when idle, so
+  the first request after a quiet period takes ~25 s. This is a plan
+  characteristic, not an application one.

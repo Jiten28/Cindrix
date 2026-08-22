@@ -6,8 +6,8 @@ pypdf>=4.0
 python-docx>=1.1
 gunicorn>=21.0
 
-# RAG / hackathon-track additions (see docs/Architecture.md "Retrieval &
-# Vector Store" and "STT Provider" sections for why each was picked)
+# Knowledge-base RAG pipeline (see docs/Architecture.md "Retrieval, Vector
+# Store & Guardrails" for why each was picked)
 numpy>=1.26            # vector math for the RAG pipeline; also faiss's own dependency
 faiss-cpu>=1.8          # real ANN vector store, replaces the old brute-force
                         # cosine loop in app/ai/embeddings.py — CPU-only, no

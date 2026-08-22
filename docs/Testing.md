@@ -10,7 +10,7 @@ on having a real account.
 
 1. `.env` has a real `GOOGLE_API_KEY` (required for anything to respond)
    and `GROQ_API_KEY` (primary generation provider — Gemini is the fallback)
-2. Optional but worth having for full coverage: `GOOGLE_CSE_ID` (web/image
+2. Optional but worth having for full coverage: `TAVILY_API_KEY` (image
    search), `ADMIN_EMAILS` (set to your own email if you want to test
    admin without relying on "first account created"). Weather needs **no**
    key — it uses Open-Meteo (keyless); there is no `OPENWEATHER_API_KEY`
@@ -83,8 +83,9 @@ on having a real account.
       can't resolve the city. Also try city-first ("Hyderabad weather") and
       Hindi ("दिल्ली का मौसम") phrasing — all should route to the weather tool
 - [ ] Ask "price of bitcoin" — real live price from CoinGecko
-- [ ] Ask "search for <topic>" — real results if `GOOGLE_CSE_ID` is set,
-      otherwise a graceful "search isn't configured" message
+- [ ] Ask "search for <topic>" — real results via Gemini's Google Search
+      grounding (needs only `GOOGLE_API_KEY`), otherwise a graceful
+      "search isn't configured" message
 - [ ] With a document or image attached (see §6), ask a weather question —
       confirm weather still answers correctly rather than the attachment
       hijacking the reply (tool intent should always win over an attachment)
@@ -223,18 +224,21 @@ on having a real account.
       should either quietly recover after a retry or show the friendly
       "Cindrix hit a temporary issue…" message, never the raw text
 
-## 17. Hackathon track — STT provider, RAG, guardrails, retry, latency
+## 17. Retrieval track — STT provider, RAG, guardrails, retry, latency
 
-Everything here is new — automated-tested during development (see below
-for what "tested" means without a live `GOOGLE_API_KEY`/network in the
-sandbox this was built in), but not yet manually re-verified against the
-real Sarvam API, the real MSMARCO-XI dataset, or real Gemini traffic.
-**Do this section before relying on the hackathon submission.**
+This section splits into what the automated suite covers (every provider
+mocked, so it runs anywhere) and what can only be verified against live
+services and real keys. Run §17b before any demo or release.
 
-### 17a. Automated coverage already done (no manual re-check needed)
-- [x] `app/rag/chunking.py` — all three strategies tested against the
+### 17a. Automated coverage (no manual re-check needed)
+- [x] `app/rag/chunking.py` — all four strategies tested against the
       real MSMARCO-XI row schema (verified against the live HF dataset
-      card, not assumed), including Devanagari sentence boundaries
+      card, not assumed): fixed-size sizing/overlap and its invalid-overlap
+      guard, semantic never splitting mid-sentence (Devanagari danda
+      included) and its boundary-sentence overlap, metadata-aware
+      preserving the `is_selected` link and skipping empty passages, and
+      the hybrid router's length-based routing with metadata surviving into
+      sub-chunks
 - [x] `app/rag/dataset.py` — fixture fallback tested (yields the
       documented example rows, loudly logged as a fixture, and ONLY when
       `huggingface_hub`/`pyarrow` are absent — never as a silent cover for a
@@ -248,16 +252,21 @@ real Sarvam API, the real MSMARCO-XI dataset, or real Gemini traffic.
       nested `passages` struct in real runs before this fix. A separate test
       asserts a real load failure is **re-raised**, never swapped for the
       fixture
-- [x] `app/rag/vector_store.py` — exact search correctness + save/load
-      round-trip tested (numpy fallback backend — `faiss` isn't
-      installed in the sandbox this was built in)
+- [x] `app/rag/vector_store.py` — exact-search correctness, save/load
+      round-trip, and rejection of mismatched vector/text lengths. The tests
+      are backend-agnostic: they assert the same behavior whether FAISS is
+      installed or the numpy fallback is in use
 - [x] `app/ai/embeddings.py`'s `top_k_chunks()` — confirmed it now goes
       through `VectorStore` and still returns correctly-ranked results
 - [x] `app/rag/ingest.py` — full pipeline (dataset → chunk → embed →
       vector store → save) tested end-to-end against fixture data
 - [x] `app/rag/guardrails.py` — unsafe-input detection (including a
-      false-positive check: a legitimate safety question doesn't trip
-      it), off-topic screening, and the relevance-floor grounding check
+      false-positive check: a legitimate safety question doesn't trip it),
+      off-topic screening for greetings, tool intent, and self/user meta
+      questions, the relevance-floor check itself, and `kb_decision()`
+      separating all three bands (answer / decline / fall through) — plus a
+      test asserting the shipped 0.75/0.70 defaults are actually calibrated
+      rather than permissive enough to let anything ground
 - [x] `app/ai/retry.py` — all four single-provider retry scenarios
       tested: transient-error recovery, retry exhaustion → friendly
       message, non-transient error → no wasted retry, mid-stream failure
@@ -306,99 +315,108 @@ real Sarvam API, the real MSMARCO-XI dataset, or real Gemini traffic.
       entries (so a Groq id selected in the UI is never handed to the Gemini
       API — it resolves to `GEMINI_MODEL` there instead)
 
-### 17b. Needs a real environment (network + real API keys) — not done yet
-- [x] Run `pip install -r requirements.txt` somewhere with network access
-      so `faiss-cpu`, `huggingface_hub`, and `pyarrow` are actually
-      installed — confirm the log warnings about missing
-      faiss/huggingface_hub/pyarrow *stop* appearing (`datasets` is no
-      longer a dependency — the loader reads the parquet shard directly)
-- [x] `python -m app.rag.ingest` against the real `ai4bharat/MSMARCO-XI`
-      dataset (not the fixture) — **done, verified 2026-08-21.** The log
-      shows `[rag.dataset] downloading/opening shard train/hintrain.parquet
-      (target_lang='hin_Deva')` and `reached max_rows=100 matches after
-      scanning 100 rows` — i.e. every one of the shard's first 100 rows was
-      `hin_Deva`, so **`hin_Deva` for Hindi is now confirmed against real
-      rows**, not just convention/filename. No `MemoryError`/`WinError
-      10038`, no "falling back to FIXTURE" line, no streaming of the combined
-      "default" config. The binding constraint turned out to be the Gemini
-      free-tier embedding quota — and there are **two** limits, not one: a
-      per-minute cap (~100 requests/min) *and* a hard **1000 requests/day**
-      cap (`EmbedContentRequestsPerDayPerUserPerProjectPerModel-FreeTier`),
-      each text in a batch counting individually. 100 rows → 1000
-      passage-level chunks sits right at the daily ceiling: `embed_texts`'
-      opt-in 429 retry rode out the per-minute windows, but near the end the
-      run hit the daily cap and couldn't beat it (that window doesn't reset
-      for hours). Result: **904/1000 chunks embedded (dim 3072), 96 skipped**
-      — and the skip was logged explicitly (`96/1000 chunks failed to embed
-      (empty vector) — skipped`), not silent, so the saved index is an honest
-      904-vector index. See `Memory.md`'s Hackathon Phase 6 entry for the
-      full run stats.
-- [ ] Ask a question the indexed corpus should cover — confirm a grounded
-      answer citing/using retrieved passage content, not a generic one
-- [ ] Ask something clearly outside the corpus — confirm the honest
-      decline message, not a hallucinated answer
-- [ ] Set `STT_PROVIDER=sarvam` and a real `SARVAM_API_KEY` — record a
-      voice question, confirm it transcribes correctly and the sphere
-      states (listening → thinking → speaking) still work exactly as
-      they do on the WebSpeech path
-- [ ] Set `STT_PROVIDER=webspeech` (or leave unset) — confirm voice input
-      still works exactly as it did before this priority (regression
-      check for the dev/fallback path)
-- [ ] Set both `GROQ_API_KEY` and `GOOGLE_API_KEY` for real — ask a
-      question that should hit the knowledge-base RAG path, confirm the
-      `[retry] response served by Groq (primary)` log line appears (not
-      an immediate fallback to Gemini) and the answer is coherent
-- [ ] Same as above, but for **general chat** — ask something that isn't
-      a tool match, doesn't have an attachment, and doesn't hit the
-      knowledge base (e.g. small talk, or a factual question the corpus
-      doesn't cover) — confirm the `[retry] response served by Groq
-      (primary)` log line appears here too, not just on the RAG paths.
-      This is the path that was actually leaking raw Gemini errors in
-      production before this fix (see `Memory.md`'s Hackathon Phase 5
-      entry) — check the analytics panel's average response latency
-      before/after to see whether Groq-primary actually helps here, since
-      this is the highest-traffic path in the router
-- [ ] Ask a weather question for a city Open-Meteo can't resolve (e.g. a
-      made-up name) to force the Gemini-fallback weather path — confirm a
-      normal weather description comes back, not raw error text, even if you
-      temporarily break `GROQ_API_KEY`/`GOOGLE_API_KEY` to force the
-      both-providers-fail case. (No `OPENWEATHER_API_KEY` exists anymore —
-      the real-data path is keyless Open-Meteo.)
-- [ ] With only `GOOGLE_API_KEY` set (no `GROQ_API_KEY`, or an invalid
-      one) — confirm the response still comes back correctly via the
-      Gemini fallback, and the log shows why Groq was skipped/failed
-- [x] `python -m app.rag.benchmark` with real `GROQ_API_KEY` AND
-      `GOOGLE_API_KEY` — **partially done, 2026-08-21.** `is_self_test` is
-      `false`, `provider_config_note` is `null`, and 5/5 queries were
-      served by **Groq (primary)** — `served_by_breakdown: {"Groq
-      (primary)": 5}`, zero Gemini fallbacks, so the Groq-primary routing
-      is confirmed healthy end-to-end. Real numbers: vector retrieval
-      (local FAISS) P50 **0.90 ms** / P70 **1.16 ms** / P100 **1.21 ms**;
-      generation (Groq `gpt-oss-120b`) P50 **957.7 ms** / P70 **1076.8 ms**
-      / P100 **1275.6 ms**; end-to-end P50 **958.6 ms** / P70 **1077.9 ms**
-      / P100 **1276.3 ms**. **`meets_target` is `false`** — P70 end-to-end
-      (~1.08 s) is well over the 200 ms target, and the `stages_ms`
-      breakdown shows why: retrieval is ~1 ms (three orders of magnitude
-      *under* target), and end-to-end is ~99.9% the LLM generation itself
-      (~1 s for a full grounded completion), which no retrieval tuning can
-      shrink. So the retrieval pipeline meets the target with enormous
-      headroom; a full generated answer is generation-bound at ~1 s. Groq
-      being primary is what keeps that ~1 s (a Gemini-Flash-only run would
-      likely be slower per the third-party TTFT figures), though this run
-      didn't force a fallback so it's not a head-to-head number.
-      **Caveat — one stage still not measured:** the query-embedding stage
-      was substituted with a real stored FAISS index vector, because the
-      free-tier daily embedding quota (1000/day) was consumed building the
-      904-vector index the same day, so a live `embed_query` would 429.
-      Retrieval + generation are fully real; the embed-query timing is not.
-      Re-run the plain `python -m app.rag.benchmark` after the daily
-      embedding quota resets (it resets well before the Aug 22 deadline) to
-      capture the one remaining real number — a single `batchEmbedContents`
-      call, ~100-400 ms empirically from the ingest per-batch timings. The
-      report JSON (`data/rag_index/latency_report.json`) records this in its
-      `measurement_mode`/`embed_query_note` fields. Note: `benchmark.py`
-      only measures the knowledge-base RAG path's generation stage, not
-      general chat's — the analytics-panel comparison above is the way to
-      sanity-check general chat's latency specifically.
+### 17b. Manual verification against a real environment (network + real API keys)
+
+Automated tests mock every provider. These are the checks that require live
+keys and a real network, with their recorded outcomes.
+
+**Dependencies and dataset loading — verified.**
+`pip install -r requirements.txt` with network access installs `faiss-cpu`,
+`huggingface_hub`, and `pyarrow`; the startup warnings about missing
+faiss/huggingface_hub/pyarrow stop appearing. (`datasets` is not a
+dependency — the loader reads the parquet shard directly.)
+
+**Real-dataset ingest — verified.** `python -m app.rag.ingest` against the
+real `ai4bharat/MSMARCO-XI` dataset (not the fixture) logs
+`[rag.dataset] downloading/opening shard train/hintrain.parquet
+(target_lang='hin_Deva')` and reaches its row cap after scanning exactly that
+many rows — i.e. every row in the shard's leading block is `hin_Deva`, so
+**`hin_Deva` for Hindi is confirmed against real rows**, not just convention
+or filename. No `MemoryError`/`WinError 10038`, no "falling back to FIXTURE"
+line, no streaming of the combined "default" config.
+
+The binding constraint is the Gemini free-tier embedding quota, and there are
+**two** limits, not one: a per-minute cap (~100 requests/min) *and* a hard
+**1000 requests/day** cap
+(`EmbedContentRequestsPerDayPerUserPerProjectPerModel-FreeTier`), each text
+in a batch counting individually. `embed_texts`' opt-in 429-retry budget
+rides out the per-minute windows; the daily cap cannot be beaten by retrying
+(it does not reset for hours). `RAG_INGEST_MAX_ROWS` is therefore tuned to
+land under the daily ceiling. The shipped index holds **868 vectors (dim
+3072)**. Any chunk that fails to embed is logged explicitly
+(`N/M chunks failed to embed (empty vector) — skipped`) rather than dropped
+silently, so a partial index is an honest one.
+
+**Grounded retrieval on a real index — verified locally.** An in-corpus
+Hindi query returns a top cosine score above `RAG_MIN_RELEVANCE` (measured
+0.8147 on `"स्नातक छात्र कक्षा में क्या पहनते हैं"`) and the answer uses the
+retrieved passage content rather than general knowledge.
+
+**Guardrail bands on a real index — verified locally.** Out-of-corpus queries
+score below the bands and are answered conversationally rather than
+declined; the narrow middle band produces `DECLINE_MESSAGE` with no model
+call at all. Measured score distribution: true matches 0.65–0.82,
+out-of-domain Hindi 0.60–0.72, out-of-domain English 0.57–0.60 — the
+calibration the 0.75/0.70 thresholds come from.
+
+**Latency benchmark with both keys real — verified.**
+`python -m app.rag.benchmark` reports `is_self_test: false`,
+`provider_config_note: null`, and **7/7** grounded queries served by **Groq
+(primary)** (`served_by_breakdown: {"Groq (primary)": 7}`) with zero Gemini
+fallbacks, so Groq-primary routing is confirmed healthy end-to-end. All five
+stages are measured against live services, including query embedding. Full
+per-stage table in [`Architecture.md`](Architecture.md) → Latency harness;
+the raw report is `rag_index/latency_report.json`.
+
+`retrieval_meets_target` is `false`, and the `stages_ms` breakdown shows
+exactly why: FAISS vector search is **0.78 ms P70** while the single
+`gemini-embedding-001` call to embed the query is **471.8 ms P70**. The
+target is missed entirely on network round-trip to a remote embedding API,
+not on anything the index or search does. Full generation adds **1622.6 ms
+P70** on top. So: local retrieval clears 200 ms by more than two orders of
+magnitude; anything involving a remote call does not, and no retrieval tuning
+changes that.
+
+Note: `benchmark.py` measures the knowledge-base RAG path's generation stage
+only, not general chat's. Use the analytics panel's average-latency figure to
+sanity-check general chat specifically.
+
+**Provider fallback with a real key missing — verified.** With only
+`GOOGLE_API_KEY` set (no or invalid `GROQ_API_KEY`), responses still come
+back via the Gemini fallback and the log records why Groq was skipped.
+
+**Live deployment checks (https://cindrix-ai.onrender.com/).**
+
+- Generation works, served by Groq primary.
+- Identity: asked who created it, the assistant answers as Cindrix rather
+  than naming the underlying model's provider — confirming the shared
+  `_PERSONA` preamble is live.
+- Weather returns real Open-Meteo data for a resolvable city.
+- Cold start on Render's free tier is ~25 s for the first request after
+  idle; subsequent requests are normal. This is a free-plan characteristic,
+  not an application one.
+- `/api/config` reports the STT provider actually in use — check this before
+  any demo, because it reflects whether `SARVAM_API_KEY` reached the host's
+  environment. `render.yaml` declares the key `sync: false`, so it must be
+  filled in manually in the Render dashboard; if it is absent the app
+  silently and correctly falls back to `webspeech`.
+- The knowledge-base RAG path depends on a live `embed_query` call. If the
+  host's `GOOGLE_API_KEY` is missing, different from the local one, or has
+  exhausted its daily embedding quota, retrieval is skipped and the turn is
+  answered conversationally. `router.py` logs a distinct warning for this
+  case (`query embedding unavailable — skipping knowledge-base retrieval`)
+  precisely so it can't be mistaken for "the corpus wasn't relevant." Check
+  the host logs for that line when grounding doesn't demonstrate.
+
+**Voice paths.** `STT_PROVIDER=sarvam` with a real `SARVAM_API_KEY`: record a
+voice question, confirm it transcribes and that the sphere states (listening
+→ thinking → speaking) behave as on the WebSpeech path. `STT_PROVIDER=webspeech`:
+confirm the keyless fallback still works (Chrome/Edge only).
+
+**Weather fallback.** Ask for a made-up city name to force the model-estimate
+path — a normal weather description should come back, not raw error text.
+Temporarily invalidating both keys should still produce the clean
+both-providers-failed message. (There is no `OPENWEATHER_API_KEY` anymore;
+the real-data path is keyless Open-Meteo.)
 
 ---
