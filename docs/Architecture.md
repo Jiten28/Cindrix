@@ -509,18 +509,20 @@ lost.
 **Why Groq is primary:** originally chosen on Groq's generally-published
 LPU-hardware inference speed (independent third-party benchmarks showing
 3-5x faster time-to-first-token than Gemini Flash). Confirmed by this
-project's own `app/rag/benchmark.py`: a real run against the built
-868-vector Hindi index had Groq (`openai/gpt-oss-120b`) serve **7/7**
-grounded queries as primary with **zero fallbacks**, generating a grounded
-Hindi answer in **~1.28 s P50 / ~1.62 s P70 / ~2.84 s P100** (first token in
-~1.03 s P50 / ~1.29 s P70). That confirms Groq reliably fills the primary
-slot and that the provider routing works end-to-end. What this run does
-*not* establish is a head-to-head Groq-vs-Gemini latency comparison —
-because Groq never failed, the Gemini fallback path was never exercised, so
-the 3-5x figure remains third-party, not reproduced here. Producing a direct
-comparison would require deliberately forcing a fallback; worth doing later,
-but the ordering is sound as-is. See the Latency harness section below for
-the full per-stage table.
+project's own `app/rag/benchmark.py`: a real 30-query run against the built
+868-vector Hindi index had Groq (`openai/gpt-oss-120b`) serve **17 of the
+18** grounded queries as primary, with the remaining one falling back to
+Gemini — so the single run confirms both that Groq reliably fills the primary
+slot and that the fallback path works end-to-end under real conditions.
+Grounded generation lands at **~1.30 s P50 / ~1.82 s P70** (17 of those 18
+served by Groq), first token in ~0.98 s P50 / ~1.16 s P70. The ~31 s P100 is
+that one Gemini fallback rather than a Groq generation — a fallback burns the
+primary's whole retry budget before the secondary is called. What this run
+still does *not* establish is a clean head-to-head Groq-vs-Gemini latency
+comparison: the fallback was triggered by a real mid-run Groq failure, not a
+controlled A/B, so the 3-5x figure remains third-party, not reproduced here.
+The ordering is sound as-is. See the Latency harness section below for the
+full per-stage table.
 
 **The chain, in order:**
 1. **Groq** (`app/ai/groq_client.py`, OpenAI-compatible `/chat/completions`
@@ -600,27 +602,40 @@ network call (existing behavior, unchanged), so the report is marked
 is forced `false` — it never claims to hit the target using numbers that
 didn't involve a real model call.
 
-**Real numbers (868-vector Hindi index, both keys configured, 10 test
-queries — 8 in-corpus, 2 deliberately out-of-corpus):**
+**Real numbers (868-vector Hindi index, both keys configured, 30 test
+queries — 28 in-corpus, drawn from the index's own source queries, and 2
+deliberately out-of-corpus):**
 
 | Stage | P50 | P70 | P100 |
 |---|---|---|---|
-| embed query (Gemini, network) | 465.7 ms | 471.8 ms | 1083.5 ms |
-| embed query (cached) | 0.001 ms | 0.001 ms | 0.002 ms |
-| vector retrieval (FAISS, local) | 0.76 ms | 0.78 ms | 0.89 ms |
-| **retrieval total** (embed + search) | 466.6 ms | 472.5 ms | 1084.3 ms |
-| generation (Groq `gpt-oss-120b`) | 1278.1 ms | 1622.6 ms | 2836.4 ms |
-| time to first token | 1030.8 ms | 1291.1 ms | 1933.3 ms |
-| **end-to-end** | 2075.7 ms | 2109.3 ms | 3303.0 ms |
+| embed query (Gemini, network) | 465.1 ms | 475.6 ms | 1158.0 ms |
+| embed query (cached) | 0.001 ms | 0.001 ms | 0.016 ms |
+| vector retrieval (FAISS, local) | 0.81 ms | 0.83 ms | 1.08 ms |
+| **retrieval total** (embed + search) | 466.0 ms | 476.3 ms | 1158.8 ms |
+| generation (Groq `gpt-oss-120b`) | 1302.8 ms | 1817.7 ms | 30992.5 ms |
+| time to first token | 980.1 ms | 1155.2 ms | 30991.7 ms |
+| **end-to-end** | 1817.4 ms | 2287.2 ms | 31441.8 ms |
 
-7 of the 8 in-corpus queries grounded above `RAG_MIN_RELEVANCE`; both
+18 of the 28 in-corpus queries grounded above `RAG_MIN_RELEVANCE`; both
 out-of-corpus queries correctly failed to ground (the guardrail working, not
-a retrieval miss). All 7 grounded answers were served by **Groq (primary)**
-with zero fallbacks (`served_by_breakdown: {"Groq (primary)": 7}`).
+a retrieval miss). 17 grounded answers came from **Groq (primary)** and one
+from the **Gemini fallback** (`served_by_breakdown: {"Groq (primary)": 17,
+"Gemini (fallback, after Groq failed)": 1}`) — the harness's provider
+fallback firing under real conditions rather than in a test.
 
-Ten queries is enough to show where the time goes, not a statistically
-rigorous large-sample percentile — the report says so in its own
-`statistical_note` field rather than leaving the reader to assume otherwise.
+That one fallback is also the entire story of the generation and end-to-end
+**P100**. A fallback costs the primary's whole retry budget before the
+secondary is even called, so that single query took ~31 s end-to-end; the
+next-slowest grounded generation was ~3.0 s, and the P50/P70 (1.3–1.8 s
+generation) are what a user actually experiences. The tail is the cost of
+recovering from a provider failure, not representative inference latency —
+`per_query` in the report shows the outlier explicitly.
+
+Thirty queries is a reasonable sample to show where the time goes and that
+the shape holds across queries — not a large-sample statistical percentile,
+and (as the ~31 s P100 shows) not immune to a single tail event. The report
+says as much in its own `statistical_note` field rather than leaving the
+reader to assume otherwise.
 
 Two things the report is explicit about (`rag_index/latency_report.json`):
 

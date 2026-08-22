@@ -39,8 +39,8 @@ Web Speech API.
 - **Latency:** `python -m app.rag.benchmark` reports real P50/P70/P100
   timings per pipeline stage. The vector search itself is sub-millisecond
   (P70 ~0.8 ms) — three orders of magnitude under the 200 ms retrieval
-  target. The measurable cost is the query-embedding network call (~0.47 s
-  P70) and answer generation (~1.6 s P70), so end-to-end latency is
+  target. The measurable cost is the query-embedding network call (~0.48 s
+  P70) and answer generation (~1.8 s P70), so end-to-end latency is
   generation-bound, not retrieval-bound. Full per-stage table in
   [`docs/Testing.md`](docs/Testing.md).
 - **Harness:** per-provider retry with exponential backoff on transient

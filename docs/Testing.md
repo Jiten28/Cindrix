@@ -360,22 +360,26 @@ out-of-domain Hindi 0.60–0.72, out-of-domain English 0.57–0.60 — the
 calibration the 0.75/0.70 thresholds come from.
 
 **Latency benchmark with both keys real — verified.**
-`python -m app.rag.benchmark` reports `is_self_test: false`,
-`provider_config_note: null`, and **7/7** grounded queries served by **Groq
-(primary)** (`served_by_breakdown: {"Groq (primary)": 7}`) with zero Gemini
-fallbacks, so Groq-primary routing is confirmed healthy end-to-end. All five
-stages are measured against live services, including query embedding. Full
-per-stage table in [`Architecture.md`](Architecture.md) → Latency harness;
-the raw report is `rag_index/latency_report.json`.
+`python -m app.rag.benchmark --queries 28` reports `is_self_test: false`,
+`provider_config_note: null`, and **18/28** in-corpus queries grounded — 17
+served by **Groq (primary)** and one by the **Gemini fallback**
+(`served_by_breakdown: {"Groq (primary)": 17, "Gemini (fallback, after Groq
+failed)": 1}`), so both the primary routing and the fallback path are
+confirmed against live services in a single run. All five stages are measured
+live, including query embedding. Full per-stage table in
+[`Architecture.md`](Architecture.md) → Latency harness; the raw report is
+`rag_index/latency_report.json`.
 
 `retrieval_meets_target` is `false`, and the `stages_ms` breakdown shows
-exactly why: FAISS vector search is **0.78 ms P70** while the single
-`gemini-embedding-001` call to embed the query is **471.8 ms P70**. The
+exactly why: FAISS vector search is **0.83 ms P70** while the single
+`gemini-embedding-001` call to embed the query is **475.6 ms P70**. The
 target is missed entirely on network round-trip to a remote embedding API,
-not on anything the index or search does. Full generation adds **1622.6 ms
-P70** on top. So: local retrieval clears 200 ms by more than two orders of
-magnitude; anything involving a remote call does not, and no retrieval tuning
-changes that.
+not on anything the index or search does. Full generation adds **1817.7 ms
+P70** on top — its P100 is a ~31 s outlier, the single query that fell back
+to Gemini (whose retry budget elapsed first), not representative inference
+time. So: local retrieval clears 200 ms by more than two orders of magnitude;
+anything involving a remote call does not, and no retrieval tuning changes
+that.
 
 Note: `benchmark.py` measures the knowledge-base RAG path's generation stage
 only, not general chat's. Use the analytics panel's average-latency figure to
