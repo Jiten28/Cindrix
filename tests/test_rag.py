@@ -7,9 +7,12 @@ import sys
 import types
 from unittest.mock import patch
 
+import numpy as np
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.config import settings
+from app.rag import vector_store as vector_store_module
 from app.rag.chunking import (
     fixed_size_chunks,
     hybrid_chunks,
@@ -176,6 +179,62 @@ def test_vector_store_rejects_mismatched_lengths():
         assert False, "expected ValueError"
     except ValueError:
         pass
+
+
+def test_vector_store_save_writes_a_numpy_sidecar(tmp_path):
+    """Every save must leave behind raw vectors, whichever backend is active —
+    it's what makes the index loadable where faiss isn't importable."""
+    store = VectorStore(dim=3)
+    store.add([[1, 0, 0], [0, 1, 0]], ["chunk-a", "chunk-b"], [{}, {}])
+    path = str(tmp_path / "test_index")
+    store.save(path)
+
+    sidecar = tmp_path / "test_index.vectors.npy"
+    assert sidecar.exists()
+    vectors = np.load(sidecar)
+    assert vectors.shape == (2, 3)
+    # Stored normalized, so inner product is cosine similarity.
+    assert np.allclose(np.linalg.norm(vectors, axis=1), 1.0)
+
+
+def test_vector_store_loads_faiss_index_without_faiss(tmp_path, monkeypatch):
+    """A faiss-saved index must still load and search where faiss can't be
+    imported — the deployment case this guards is a slim base image missing
+    the OpenMP runtime faiss's wheel needs."""
+    store = VectorStore(dim=3)
+    store.add([[1, 0, 0], [0, 1, 0]], ["chunk-a", "chunk-b"], [{"x": 1}, {"x": 2}])
+    path = str(tmp_path / "test_index")
+    store.save(path)
+
+    # Pretend faiss vanished after the index was written. The meta file still
+    # says backend: faiss when faiss was available at save time.
+    monkeypatch.setattr(vector_store_module, "_FAISS_AVAILABLE", False)
+    loaded = VectorStore.load(path)
+
+    assert len(loaded) == 2
+    results = loaded.search([1, 0, 0], k=1)
+    assert results[0][0] == "chunk-a"
+    assert results[0][2]["x"] == 1
+    assert results[0][1] > 0.99
+
+
+def test_vector_store_load_without_faiss_or_sidecar_raises_clearly(tmp_path, monkeypatch):
+    """The one case that genuinely can't be recovered should say why, not
+    fail with a bare file-not-found."""
+    store = VectorStore(dim=3)
+    store.add([[1, 0, 0]], ["chunk-a"], [{}])
+    path = str(tmp_path / "test_index")
+    store.save(path)
+    if not vector_store_module._FAISS_AVAILABLE:
+        return  # nothing saved a .faiss file, so this case doesn't apply here
+    (tmp_path / "test_index.vectors.npy").unlink()
+
+    monkeypatch.setattr(vector_store_module, "_FAISS_AVAILABLE", False)
+    try:
+        VectorStore.load(path)
+        assert False, "expected RuntimeError"
+    except RuntimeError as e:
+        assert "sidecar" in str(e)
 
 
 # --- guardrails -----------------------------------------------------------

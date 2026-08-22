@@ -13,10 +13,13 @@ faiss-cpu>=1.8          # real ANN vector store, replaces the old brute-force
                         # cosine loop in app/ai/embeddings.py — CPU-only, no
                         # server/infra to run, fits this project's
                         # no-external-service pattern. Soft-imported: code
-                        # falls back to an exact numpy search with a loud
-                        # warning if this isn't installed, so the app still
-                        # runs (degraded) in an environment where it can't
-                        # be installed — see app/rag/vector_store.py
+                        # falls back to an exact numpy search over the index's
+                        # .vectors.npy sidecar with a loud warning if this
+                        # can't be imported, so the app still serves grounded
+                        # answers (slower) either way — see
+                        # app/rag/vector_store.py. NOTE: the wheel links
+                        # libgomp.so.1, which Debian slim images don't ship;
+                        # the Dockerfile installs libgomp1 for this reason.
 huggingface_hub>=0.23   # downloads the target language's MSMARCO-XI parquet
                         # shard by name (hf_hub_download) — replaces the
                         # HuggingFace `datasets` library, which crashed with

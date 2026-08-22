@@ -154,7 +154,7 @@ database can be swapped in later without changing callers.
 | `data/analytics_events.json` | list of `{ts, event_type, user_id, conversation_id, tool_used, latency_ms, message_len}` | `app/analytics/events.py` |
 | `data/uploads/` | uploaded document and image files | `app/api/` upload route |
 | `data/embeddings/` | per-attachment chunk text + vectors | `app/memory/attachment_store.py` |
-| `rag_index/` | the built knowledge-base index (FAISS binary + chunk metadata + latency report) — read-only build output, deliberately **outside** `data/` | `app/rag/ingest.py` |
+| `rag_index/` | the built knowledge-base index (FAISS binary + a raw-vector `.npy` sidecar + chunk metadata + latency report) — read-only build output, deliberately **outside** `data/` | `app/rag/ingest.py` |
 
 Conversation titles are derived from the first user message rather than
 stored separately. `user_id` is `guest` for unauthenticated use, so the same
@@ -366,19 +366,36 @@ written Python loop; `IndexIVFFlat` once a collection passes ~10k
 vectors, a genuine approximate-nearest-neighbor index) — picked over a
 hosted/server vector DB (Pinecone, Weaviate, etc.) because it needs no
 running service or network dependency, fitting this project's existing
-no-external-infra pattern (JSON files, SQLite-when-needed), and over
-Chroma because FAISS is the leaner dependency for a pure similarity-
-search need with no extra features this project uses. Vectors are
-L2-normalized on insert so inner product doubles as cosine similarity —
-one index type serves both the small per-document case and the large
-corpus case.
+no-external-infra pattern, and over Chroma because FAISS is the leaner
+dependency for a pure similarity-search need with no extra features this
+project uses. Vectors are L2-normalized on insert so inner product doubles
+as cosine similarity — one index type serves both the small per-document
+case and the large corpus case.
 
-`faiss` is soft-imported too (not installed in the sandboxed session this
-was built in) — falls back to an exact numpy-based search, loudly logged
-every time a store is built without it, so it's never mistaken for the
-real thing in a benchmark or demo. Persists to disk via `.save()`/
-`.load()` (JSON for chunks/metadata + a native FAISS index file, or a
-pickle of the raw vectors in fallback mode).
+`faiss` is soft-imported, falling back to an exact numpy search that is
+loudly logged every time a store is built without it, so the fallback is
+never mistaken for the real thing in a benchmark or demo. This matters more
+than it sounds: `pip install faiss-cpu` succeeds anywhere, because it's a
+prebuilt wheel, but the wheel links against `libgomp.so.1` — the OpenMP
+runtime — which Debian slim images (including `python:3.12-slim`) don't
+ship. The result is a build that passes and an `import faiss` that fails
+only at runtime, in the container, with the app degrading to conversational
+answers because the index can't be read. Two things address it: the
+`Dockerfile` installs `libgomp1` and then asserts both `import faiss` and a
+successful index load at build time, so this fails the build rather than a
+demo.
+
+Persistence covers the same case. `.save()` writes chunks and metadata as
+JSON plus a native FAISS index file, **and always a `<path>.vectors.npy`
+sidecar** of the raw normalized vectors. A `.faiss` file is unreadable
+without faiss, but the sidecar is just an array — so `.load()` in an
+environment without faiss reads the sidecar and searches exactly with numpy
+instead of refusing an index that is otherwise perfectly usable. It costs
+one float32 copy of the vectors on disk (~10 MB at 868 × 3072) to turn the
+numpy fallback into a real fallback rather than a build-machine-only one.
+At this corpus size the fallback measures ~0.31 ms per query against
+faiss's ~0.76 ms — one matmul over 868 vectors beats faiss's fixed
+overhead, and faiss only earns its keep well past this scale.
 
 `top_k_chunks()` in `embeddings.py` now builds a small `VectorStore` per
 call instead of looping by hand — same behavior at the small scale it
