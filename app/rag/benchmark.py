@@ -153,14 +153,18 @@ def time_one_query(query: str, model: Optional[str] = None, in_corpus: bool = Tr
     )
 
 
-def run_benchmark(queries: Optional[List[str]] = None, model: Optional[str] = None) -> Dict:
+def run_benchmark(
+    queries: Optional[List[str]] = None,
+    model: Optional[str] = None,
+    corpus_query_count: int = _DEFAULT_CORPUS_QUERIES,
+) -> Dict:
     store = get_kb_store()
     index_size = len(store) if store is not None else 0
 
     if queries is not None:
         timings = [time_one_query(q, model=model, in_corpus=True) for q in queries]
     else:
-        in_corpus = corpus_queries()
+        in_corpus = corpus_queries(corpus_query_count)
         timings = [time_one_query(q, model=model, in_corpus=True) for q in in_corpus]
         timings += [time_one_query(q, model=model, in_corpus=False) for q in OUT_OF_CORPUS_QUERIES]
 
@@ -217,9 +221,13 @@ def run_benchmark(queries: Optional[List[str]] = None, model: Optional[str] = No
         ),
         "served_by_breakdown": served_by_counts,
         "statistical_note": (
-            f"{len(timings)} test queries — enough to sanity-check where time "
-            f"goes, not a statistically rigorous P50/P70/P100 in the "
-            f"large-sample sense."
+            f"Nearest-rank percentiles over {len(timings)} distinct test queries "
+            f"({expected_grounded} drawn from the index, "
+            f"{len(timings) - expected_grounded} deliberately out-of-corpus), one "
+            f"cold run each — not a single best-case run, and not a load test "
+            f"either. Enough to show where the time goes and that the shape holds "
+            f"across queries; the tail (P100) is a single observation by "
+            f"definition."
         ),
         "stages_ms": {
             "embed_query": {"p50": percentile(embeds, 50), "p70": percentile(embeds, 70), "p100": percentile(embeds, 100)},
@@ -244,6 +252,18 @@ def run_benchmark(queries: Optional[List[str]] = None, model: Optional[str] = No
 def main() -> None:
     parser = argparse.ArgumentParser(description="Latency benchmark for the RAG pipeline.")
     parser.add_argument("--model", default=None)
+    parser.add_argument(
+        "--queries",
+        type=int,
+        default=_DEFAULT_CORPUS_QUERIES,
+        help=(
+            "How many in-corpus queries to draw from the index (default "
+            f"{_DEFAULT_CORPUS_QUERIES}). The two out-of-corpus decline-path "
+            "queries are always added on top. Raise this for percentiles over a "
+            "wider sample; each query costs one embedding call and, if it "
+            "grounds, one generation."
+        ),
+    )
     parser.add_argument("--out", default=f"{settings.RAG_INDEX_DIR}/latency_report.json")
     args = parser.parse_args()
 
@@ -255,7 +275,7 @@ def main() -> None:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    report = run_benchmark(model=args.model)
+    report = run_benchmark(model=args.model, corpus_query_count=args.queries)
     print(json.dumps(report, ensure_ascii=False, indent=2))
 
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
