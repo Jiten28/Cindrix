@@ -35,7 +35,8 @@ def fixed_size_chunks(
         if piece:
             chunks.append(Chunk(
                 text=piece,
-                metadata={**base_meta, "chunk_index": index, "strategy": "fixed_size"},
+                metadata={**base_meta, "chunk_index": index,
+                          "strategy": "fixed_size"},
                 strategy="fixed_size",
             ))
             index += 1
@@ -65,7 +66,8 @@ def semantic_chunks(
     if not text:
         return []
 
-    sentences = [s.strip() for s in _SENTENCE_SPLIT_RE.split(text) if s.strip()]
+    sentences = [s.strip()
+                 for s in _SENTENCE_SPLIT_RE.split(text) if s.strip()]
     if not sentences:
         return []
 
@@ -83,7 +85,8 @@ def semantic_chunks(
         if piece:
             chunks.append(Chunk(
                 text=piece,
-                metadata={**base_meta, "chunk_index": index, "strategy": "semantic", "sentence_count": len(current)},
+                metadata={**base_meta, "chunk_index": index,
+                          "strategy": "semantic", "sentence_count": len(current)},
                 strategy="semantic",
             ))
             index += 1

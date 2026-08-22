@@ -875,6 +875,18 @@
 
   // ---------- voice output (browser TTS) ----------
 
+  // An English voice can't pronounce Devanagari: the Web Speech engine drops
+  // every glyph it can't map and speaks only what's left, so a Hindi answer
+  // comes out as just its digits. Detect a predominantly-Hindi reply so speak()
+  // can switch to a Hindi voice. Compares Devanagari vs. Latin letter counts so
+  // a stray Latin token (a number, "NH", "CPA") doesn't flip an English answer.
+  function isPredominantlyDevanagari(text) {
+    const deva = (text.match(/[ऀ-ॿ]/g) || []).length;
+    if (!deva) return false;
+    const latin = (text.match(/[A-Za-z]/g) || []).length;
+    return deva >= latin;
+  }
+
   function speak(text, onDone) {
     if (!("speechSynthesis" in window) || !text) {
       activeSphere().setState("idle");
@@ -883,8 +895,18 @@
     }
     activeSphere().setState("speaking");
     const utter = new SpeechSynthesisUtterance(stripMarkdownForSpeech(text));
-    const chosenVoice = availableVoices.find((v) => v.name === voiceSelect.value);
-    if (chosenVoice) utter.voice = chosenVoice;
+    if (isPredominantlyDevanagari(text)) {
+      // The voice dropdown only lists English voices, so honoring the selection
+      // here would read a Hindi answer as just its numbers. Force a Hindi voice
+      // (Chrome/Edge ship an online one) and tag the utterance hi-IN so the
+      // engine still does the right thing if no explicit hi voice is installed.
+      const hindiVoice = availableVoices.find((v) => v.lang && v.lang.startsWith("hi"));
+      if (hindiVoice) utter.voice = hindiVoice;
+      utter.lang = "hi-IN";
+    } else {
+      const chosenVoice = availableVoices.find((v) => v.name === voiceSelect.value);
+      if (chosenVoice) utter.voice = chosenVoice;
+    }
     const finish = () => {
       activeSphere().setState("idle");
       if (onDone) onDone();
@@ -901,7 +923,9 @@
       .replace(/!\[[^\]]*\]\([^)]+\)/g, " image omitted ")
       .replace(/`([^`]+)`/g, "$1")
       .replace(/\*\*([^*]+)\*\*/g, "$1")
-      .replace(/\*([^*]+)\*/g, "$1");
+      .replace(/\*([^*]+)\*/g, "$1")
+      .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+      .replace(/^\s{0,3}[*+-]\s+/gm, "");
   }
 
   // ---------- voice input (browser STT, or Sarvam server-side STT) ----------

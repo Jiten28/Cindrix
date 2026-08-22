@@ -35,7 +35,8 @@ from app.tools.documents import SUPPORTED_EXTENSIONS, chunk_text, extract_text
 bp = Blueprint("api", __name__, url_prefix="/api")
 
 _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
-_IMAGE_MIME = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
+_IMAGE_MIME = {".png": "image/png", ".jpg": "image/jpeg",
+               ".jpeg": "image/jpeg", ".webp": "image/webp"}
 _PENDING = "__pending__"
 
 
@@ -79,7 +80,8 @@ def stt():
     audio_bytes = audio_file.read()
     if not audio_bytes:
         return jsonify({"ok": False, "error": "Empty audio recording."}), 400
-    result = transcribe_audio(audio_bytes, audio_file.mimetype or "audio/webm", audio_file.filename or "audio.webm")
+    result = transcribe_audio(
+        audio_bytes, audio_file.mimetype or "audio/webm", audio_file.filename or "audio.webm")
     status = 200 if result["ok"] else 502
     return jsonify(result), status
 
@@ -99,7 +101,8 @@ def chat():
     if not user_input:
         return jsonify({"error": "message is required"}), 400
 
-    is_new_conversation = not conversation_id or not load_conversation(user_id, conversation_id)
+    is_new_conversation = not conversation_id or not load_conversation(
+        user_id, conversation_id)
     if is_new_conversation:
         conv = create_conversation(user_id)
         conversation_id = conv["id"]
@@ -129,7 +132,8 @@ def chat():
         reply_text = "".join(full_reply)
         append_message(user_id, conversation_id, "assistant", reply_text)
         latency_ms = int((time.time() - start_time) * 1000)
-        events.log_chat_turn(user_id, conversation_id, tool_used, latency_ms, len(user_input))
+        events.log_chat_turn(user_id, conversation_id,
+                             tool_used, latency_ms, len(user_input))
 
     resp = Response(stream_with_context(generate()), mimetype="text/plain")
     resp.headers["X-Conversation-Id"] = conversation_id
@@ -173,9 +177,10 @@ def export_conversation(conv_id):
     safe_title = secure_filename(conv["title"])[:40] or "conversation"
 
     if fmt == "json":
-        buf = io.BytesIO(json.dumps(conv, indent=2, ensure_ascii=False).encode("utf-8"))
+        buf = io.BytesIO(json.dumps(
+            conv, indent=2, ensure_ascii=False).encode("utf-8"))
         return send_file(buf, mimetype="application/json", as_attachment=True,
-                          download_name=f"{safe_title}.json")
+                         download_name=f"{safe_title}.json")
 
     lines = [f"# {conv['title']}", ""]
     for m in conv["messages"]:
@@ -186,7 +191,7 @@ def export_conversation(conv_id):
         lines.append("")
     buf = io.BytesIO("\n".join(lines).encode("utf-8"))
     return send_file(buf, mimetype="text/markdown", as_attachment=True,
-                      download_name=f"{safe_title}.md")
+                     download_name=f"{safe_title}.md")
 
 
 @bp.route("/analytics/summary", methods=["GET"])
@@ -274,6 +279,7 @@ def attachment():
 def remove_attachment():
     user_id = current_user_id()
     data = request.get_json(silent=True) or {}
-    conversation_id = data.get("conversation_id") or request.args.get("conversation_id") or None
+    conversation_id = data.get("conversation_id") or request.args.get(
+        "conversation_id") or None
     clear_active(_attachment_key(user_id, conversation_id))
     return jsonify({"cleared": True})

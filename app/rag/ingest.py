@@ -77,21 +77,26 @@ def ingest(
     for i in range(0, len(texts), _EMBED_BATCH_SIZE):
         batch = texts[i:i + _EMBED_BATCH_SIZE]
         vectors.extend(embed_texts(batch, max_retries=_EMBED_MAX_RETRIES))
-        logger.info("[rag.ingest] embedded %d/%d chunks", min(i + _EMBED_BATCH_SIZE, len(texts)), len(texts))
+        logger.info("[rag.ingest] embedded %d/%d chunks",
+                    min(i + _EMBED_BATCH_SIZE, len(texts)), len(texts))
 
     valid = [(v, t, m) for v, t, m in zip(vectors, texts, metadatas) if v]
     skipped = len(vectors) - len(valid)
     if skipped:
-        logger.warning("[rag.ingest] %d/%d chunks failed to embed (empty vector) — skipped", skipped, len(vectors))
+        logger.warning(
+            "[rag.ingest] %d/%d chunks failed to embed (empty vector) — skipped", skipped, len(vectors))
     if not valid:
-        logger.error("[rag.ingest] every embedding failed — is GOOGLE_API_KEY set?")
+        logger.error(
+            "[rag.ingest] every embedding failed — is GOOGLE_API_KEY set?")
         return {"rows": row_count, "chunks_produced": len(all_chunks), "chunks_embedded": 0, "index_path": index_path}
 
     dim = len(valid[0][0])
     store = VectorStore(dim=dim)
-    store.add([v for v, _, _ in valid], [t for _, t, _ in valid], [m for _, _, m in valid])
+    store.add([v for v, _, _ in valid], [t for _, t,
+              _ in valid], [m for _, _, m in valid])
     store.save(index_path)
-    logger.info("[rag.ingest] saved %d-vector index to %s", len(valid), index_path)
+    logger.info("[rag.ingest] saved %d-vector index to %s",
+                len(valid), index_path)
 
     return {
         "rows": row_count,
@@ -105,11 +110,16 @@ def ingest(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Ingest ai4bharat/MSMARCO-XI into a persisted vector store.")
-    parser.add_argument("--language", default=None, help=f"default: {settings.RAG_DATASET_LANGUAGE}")
-    parser.add_argument("--split", default=None, help=f"default: {settings.RAG_DATASET_SPLIT}")
-    parser.add_argument("--max-rows", type=int, default=None, help=f"default: {settings.RAG_INGEST_MAX_ROWS}")
-    parser.add_argument("--out", default=None, help="index path (without extension)")
+    parser = argparse.ArgumentParser(
+        description="Ingest ai4bharat/MSMARCO-XI into a persisted vector store.")
+    parser.add_argument("--language", default=None,
+                        help=f"default: {settings.RAG_DATASET_LANGUAGE}")
+    parser.add_argument("--split", default=None,
+                        help=f"default: {settings.RAG_DATASET_SPLIT}")
+    parser.add_argument("--max-rows", type=int, default=None,
+                        help=f"default: {settings.RAG_INGEST_MAX_ROWS}")
+    parser.add_argument("--out", default=None,
+                        help="index path (without extension)")
     parser.add_argument(
         "--allow-fixture", action="store_true",
         help="build from the 2-row documentation fixture when huggingface_hub/pyarrow are missing",

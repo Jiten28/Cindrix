@@ -83,7 +83,8 @@ def _yield_with_graceful_close(gen: Generator[str, None, None], provider_label: 
         for chunk in gen:
             yield chunk
     except Exception as e:
-        logger.error("[retry] %s stream interrupted mid-response: %s", provider_label, e)
+        logger.error(
+            "[retry] %s stream interrupted mid-response: %s", provider_label, e)
         yield "\n\n*(connection interrupted — the rest of this answer may be incomplete)*"
 
 
@@ -116,9 +117,11 @@ def stream_with_fallback(
         primary_label, fallback_label, primary_label, primary_error,
     )
 
-    status2, result2 = _attempt_with_retry(make_fallback_stream, fallback_label)
+    status2, result2 = _attempt_with_retry(
+        make_fallback_stream, fallback_label)
     if status2 == "ok":
-        logger.info("[retry] response served by %s (fallback, after %s failed)", fallback_label, primary_label)
+        logger.info("[retry] response served by %s (fallback, after %s failed)",
+                    fallback_label, primary_label)
         yield from _yield_with_graceful_close(result2, fallback_label)
         return
 
