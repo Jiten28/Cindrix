@@ -509,13 +509,13 @@ lost.
 **Why Groq is primary:** originally chosen on Groq's generally-published
 LPU-hardware inference speed (independent third-party benchmarks showing
 3-5x faster time-to-first-token than Gemini Flash). Confirmed by this
-project's own `app/rag/benchmark.py`: a real 30-query run against the built
+project's own `app/rag/benchmark.py`: a real 38-query run against the built
 868-vector Hindi index had Groq (`openai/gpt-oss-120b`) serve **17 of the
 18** grounded queries as primary, with the remaining one falling back to
 Gemini — so the single run confirms both that Groq reliably fills the primary
 slot and that the fallback path works end-to-end under real conditions.
-Grounded generation lands at **~1.30 s P50 / ~1.82 s P70** (17 of those 18
-served by Groq), first token in ~0.98 s P50 / ~1.16 s P70. The ~31 s P100 is
+Grounded generation lands at **~1.18 s P50 / ~1.54 s P70** (17 of those 18
+served by Groq), first token in ~0.89 s P50 / ~1.06 s P70. The ~21.5 s P100 is
 that one Gemini fallback rather than a Groq generation — a fallback burns the
 primary's whole retry budget before the secondary is called. What this run
 still does *not* establish is a clean head-to-head Groq-vs-Gemini latency
@@ -602,21 +602,21 @@ network call (existing behavior, unchanged), so the report is marked
 is forced `false` — it never claims to hit the target using numbers that
 didn't involve a real model call.
 
-**Real numbers (868-vector Hindi index, both keys configured, 30 test
-queries — 28 in-corpus, drawn from the index's own source queries, and 2
+**Real numbers (868-vector Hindi index, both keys configured, 38 test
+queries — 28 in-corpus, drawn from the index's own source queries, and 10
 deliberately out-of-corpus):**
 
 | Stage | P50 | P70 | P100 |
 |---|---|---|---|
-| embed query (Gemini, network) | 465.1 ms | 475.6 ms | 1158.0 ms |
-| embed query (cached) | 0.001 ms | 0.001 ms | 0.016 ms |
-| vector retrieval (FAISS, local) | 0.81 ms | 0.83 ms | 1.08 ms |
-| **retrieval total** (embed + search) | 466.0 ms | 476.3 ms | 1158.8 ms |
-| generation (Groq `gpt-oss-120b`) | 1302.8 ms | 1817.7 ms | 30992.5 ms |
-| time to first token | 980.1 ms | 1155.2 ms | 30991.7 ms |
-| **end-to-end** | 1817.4 ms | 2287.2 ms | 31441.8 ms |
+| embed query (Gemini, network) | 454.7 ms | 468.0 ms | 1158.3 ms |
+| embed query (cached) | 0.001 ms | 0.002 ms | 0.002 ms |
+| vector retrieval (FAISS, local) | 0.94 ms | 1.10 ms | 1.40 ms |
+| **retrieval total** (embed + search) | 455.9 ms | 468.9 ms | 1159.5 ms |
+| generation (Groq `gpt-oss-120b`) | 1175.7 ms | 1544.5 ms | 21524.5 ms |
+| time to first token | 892.8 ms | 1059.0 ms | 21380.3 ms |
+| **end-to-end** | 1744.6 ms | 2094.2 ms | 22002.7 ms |
 
-18 of the 28 in-corpus queries grounded above `RAG_MIN_RELEVANCE`; both
+18 of the 28 in-corpus queries grounded above `RAG_MIN_RELEVANCE`; all 10
 out-of-corpus queries correctly failed to ground (the guardrail working, not
 a retrieval miss). 17 grounded answers came from **Groq (primary)** and one
 from the **Gemini fallback** (`served_by_breakdown: {"Groq (primary)": 17,
@@ -625,22 +625,22 @@ fallback firing under real conditions rather than in a test.
 
 That one fallback is also the entire story of the generation and end-to-end
 **P100**. A fallback costs the primary's whole retry budget before the
-secondary is even called, so that single query took ~31 s end-to-end; the
-next-slowest grounded generation was ~3.0 s, and the P50/P70 (1.3–1.8 s
+secondary is even called, so that single query took ~22 s end-to-end; the
+next-slowest grounded generation was ~2.3 s, and the P50/P70 (1.2–1.5 s
 generation) are what a user actually experiences. The tail is the cost of
 recovering from a provider failure, not representative inference latency —
 `per_query` in the report shows the outlier explicitly.
 
-Thirty queries is a reasonable sample to show where the time goes and that
-the shape holds across queries — not a large-sample statistical percentile,
-and (as the ~31 s P100 shows) not immune to a single tail event. The report
-says as much in its own `statistical_note` field rather than leaving the
-reader to assume otherwise.
+Thirty-eight queries is a reasonable sample to show where the time goes and
+that the shape holds across queries — not a large-sample statistical
+percentile, and (as the ~22 s P100 shows) not immune to a single tail event.
+The report says as much in its own `statistical_note` field rather than
+leaving the reader to assume otherwise.
 
 Two things the report is explicit about (`rag_index/latency_report.json`):
 
 1. **Query embedding, not vector search, is the whole retrieval cost.** The
-   FAISS search is ~0.8 ms; the single `gemini-embedding-001` call to turn
+   FAISS search is ~1 ms; the single `gemini-embedding-001` call to turn
    the question into a vector is ~470 ms of network round-trip. That is
    ~99.8% of retrieval time and it is entirely a remote API call, not an
    index property. The harness also records a `embed_query_cached` stage
@@ -648,8 +648,8 @@ Two things the report is explicit about (`rag_index/latency_report.json`):
    in hand — that is the honest measure of the local pipeline.
 2. **The <200 ms end-to-end target is not met — and structurally can't be
    by this shape of pipeline.** Vector search, the stage a vector-DB choice
-   actually governs, is ~0.8 ms (over two orders of magnitude under target).
-   The rest is two remote calls: ~470 ms to embed the query and ~1.6 s to
+   actually governs, is ~1 ms (over two orders of magnitude under target).
+   The rest is two remote calls: ~470 ms to embed the query and ~1.5 s to
    generate a real answer, neither of which any retrieval optimization can
    shrink. So the honest reading: local retrieval is far under 200 ms;
    end-to-end with a full generated answer is ~2.1 s and dominated by

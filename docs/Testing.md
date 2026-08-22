@@ -352,12 +352,14 @@ Hindi query returns a top cosine score above `RAG_MIN_RELEVANCE` (measured
 0.8147 on `"स्नातक छात्र कक्षा में क्या पहनते हैं"`) and the answer uses the
 retrieved passage content rather than general knowledge.
 
-**Guardrail bands on a real index — verified locally.** Out-of-corpus queries
-score below the bands and are answered conversationally rather than
-declined; the narrow middle band produces `DECLINE_MESSAGE` with no model
-call at all. Measured score distribution: true matches 0.65–0.82,
-out-of-domain Hindi 0.60–0.72, out-of-domain English 0.57–0.60 — the
-calibration the 0.75/0.70 thresholds come from.
+**Guardrail bands on a real index — verified.** All 10 out-of-corpus queries
+in the benchmark scored below `RAG_DECLINE_FLOOR` (0.70) and are answered
+conversationally rather than falsely declined; the narrow middle band between
+the two thresholds produces `DECLINE_MESSAGE` with no model call at all.
+Measured score distribution (the report's `calibration` block): in-corpus
+true matches 0.65–0.83, out-of-corpus 0.56–0.66 — the highest non-match
+(0.659) sits 0.09 below `RAG_MIN_RELEVANCE` (0.75), with zero false positives.
+That margin is the calibration the 0.75/0.70 thresholds come from.
 
 **Latency benchmark with both keys real — verified.**
 `python -m app.rag.benchmark --queries 28` reports `is_self_test: false`,
@@ -371,11 +373,11 @@ live, including query embedding. Full per-stage table in
 `rag_index/latency_report.json`.
 
 `retrieval_meets_target` is `false`, and the `stages_ms` breakdown shows
-exactly why: FAISS vector search is **0.83 ms P70** while the single
-`gemini-embedding-001` call to embed the query is **475.6 ms P70**. The
+exactly why: FAISS vector search is **1.10 ms P70** while the single
+`gemini-embedding-001` call to embed the query is **468.0 ms P70**. The
 target is missed entirely on network round-trip to a remote embedding API,
-not on anything the index or search does. Full generation adds **1817.7 ms
-P70** on top — its P100 is a ~31 s outlier, the single query that fell back
+not on anything the index or search does. Full generation adds **1544.5 ms
+P70** on top — its P100 is a ~21.5 s outlier, the single query that fell back
 to Gemini (whose retry budget elapsed first), not representative inference
 time. So: local retrieval clears 200 ms by more than two orders of magnitude;
 anything involving a remote call does not, and no retrieval tuning changes
